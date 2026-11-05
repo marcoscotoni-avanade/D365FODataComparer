@@ -1,0 +1,219 @@
+﻿<Window x:Class="D365FO.Compare.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="D365FO Data Comparison Tool" Height="760" Width="1120"
+        MinHeight="650" MinWidth="900" WindowStartupLocation="CenterScreen"
+        Background="{StaticResource PageBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="{StaticResource InkBrush}" Padding="28,20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="D365FO / DATA COMPARISON" Foreground="#7DD3C7" FontSize="11" FontWeight="Bold" />
+                    <TextBlock Text="Environment setup" Foreground="White" FontSize="25" FontWeight="SemiBold" Margin="0,4,0,0" />
+                </StackPanel>
+                <Border Grid.Column="1" Background="#284454" CornerRadius="3" Padding="12,7" VerticalAlignment="Center">
+                    <TextBlock Text="CONFIGURATION MVP" Foreground="White" FontSize="10" FontWeight="Bold" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <TabControl Grid.Row="1" x:Name="WizardTabs" SelectedIndex="{Binding CurrentStepIndex}"
+                    Margin="24,20" Background="White" BorderBrush="{StaticResource LineBrush}">
+            <TabControl.ItemContainerStyle>
+                <Style TargetType="TabItem">
+                    <Setter Property="Padding" Value="18,12" />
+                    <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                </Style>
+            </TabControl.ItemContainerStyle>
+
+            <TabItem Header="1  Account">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="30">
+                        <TextBlock Text="Microsoft account" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+                        <TextBlock Text="Sign in with the account that can discover and access both Finance and Operations environments."
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,24" />
+                        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Padding="20" CornerRadius="4" HorizontalAlignment="Stretch">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                        <TextBlock Text="Signed-in account" Foreground="{StaticResource MutedBrush}" FontSize="12" />
+                                        <TextBlock Text="{Binding SessionDisplay}" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" Margin="0,5,0,2" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <WrapPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                    <Button Content="Sign in with Microsoft" Command="{Binding SignInCommand}" Background="{StaticResource AccentBrush}" Foreground="White" />
+                                    <Button Content="Change account" Command="{Binding ChangeAccountCommand}" />
+                                    <Button Content="Sign out" Command="{Binding SignOutCommand}" Margin="0" />
+                                    </WrapPanel>
+                                </Grid>
+                                <TextBlock Grid.Row="1" Text="{Binding StatusMessage}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,12,0,0" />
+                            </Grid>
+                        </Border>
+                        <TextBlock Text="App registration settings are read from appsettings.json. No client secret is used."
+                                   Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,18,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="2  Discover">
+                <Grid Margin="26">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Discover environments" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+                        <TextBlock Text="Only environments with a usable FinOps URL can be selected as Source or Target."
+                                   Foreground="{StaticResource MutedBrush}" Margin="0,7,0,18" />
+                    </StackPanel>
+                    <Grid Grid.Row="1" Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search name or URL" Margin="0,0,8,0" />
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableTypes}" SelectedItem="{Binding SelectedTypeFilter}" Margin="0,0,8,0" />
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding AvailableStates}" SelectedItem="{Binding SelectedStateFilter}" Margin="0,0,8,0" />
+                        <ComboBox Grid.Column="3" ItemsSource="{Binding AvailableRegions}" SelectedItem="{Binding SelectedRegionFilter}" Margin="0,0,8,0" />
+                        <Button Grid.Column="4" Content="Discover / Refresh" Command="{Binding DiscoverCommand}" Margin="0" />
+                    </Grid>
+                    <DataGrid Grid.Row="2" ItemsSource="{Binding EnvironmentsView}" SelectedItem="{Binding SelectedEnvironment}"
+                              AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal" BorderBrush="{StaticResource LineBrush}" RowHeight="42">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Environment" Binding="{Binding DisplayName}" Width="2*" />
+                            <DataGridTextColumn Header="FinOps type" Binding="{Binding FinOpsEnvironmentType}" Width="*" />
+                            <DataGridTextColumn Header="Platform type" Binding="{Binding PowerPlatformType}" Width="*" />
+                            <DataGridTextColumn Header="State" Binding="{Binding State}" Width="*" />
+                            <DataGridTextColumn Header="Region" Binding="{Binding Region}" Width="*" />
+                            <DataGridTextColumn Header="FinOps URL" Binding="{Binding FinOpsUrl}" Width="2*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <Grid Grid.Row="3" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Content="Show non-FinOps environments" IsChecked="{Binding ShowNonFinOpsEnvironments}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Add manually" Command="{Binding ToggleManualEntryCommand}" Margin="0" />
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="3  Source / Target">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="26">
+                        <TextBlock Text="Choose both environments" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+                        <TextBlock Text="The connection checks are independent and use the signed-in user’s FinOps permissions."
+                                   Foreground="{StaticResource MutedBrush}" Margin="0,7,0,20" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="20" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <GroupBox Header="SOURCE ENVIRONMENT" Padding="16" BorderBrush="{StaticResource LineBrush}" FontWeight="SemiBold">
+                                <StackPanel>
+                                    <ComboBox ItemsSource="{Binding FinOpsEnvironments}" SelectedItem="{Binding SelectedSource}"
+                                              DisplayMemberPath="DisplayName" MinHeight="36" IsEnabled="{Binding IsNotBusy}" />
+                                    <TextBlock Text="{Binding SourceUrlDisplay}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,14,0,18" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Test connection" Command="{Binding TestSourceCommand}" Background="{StaticResource AccentBrush}" Foreground="White" />
+                                        <TextBlock Text="{Binding SourceValidationMessage}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </GroupBox>
+                            <GroupBox Grid.Column="2" Header="TARGET ENVIRONMENT" Padding="16" BorderBrush="{StaticResource LineBrush}" FontWeight="SemiBold">
+                                <StackPanel>
+                                    <ComboBox ItemsSource="{Binding FinOpsEnvironments}" SelectedItem="{Binding SelectedTarget}"
+                                              DisplayMemberPath="DisplayName" MinHeight="36" IsEnabled="{Binding IsNotBusy}" />
+                                    <TextBlock Text="{Binding TargetUrlDisplay}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,14,0,18" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Test connection" Command="{Binding TestTargetCommand}" Background="{StaticResource AccentBrush}" Foreground="White" />
+                                        <TextBlock Text="{Binding TargetValidationMessage}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </GroupBox>
+                        </Grid>
+                        <TextBlock Text="{Binding SelectionWarning}" Foreground="#9B4D20" TextWrapping="Wrap" Margin="0,16,0,0" />
+                        <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        <Border Visibility="{Binding IsManualEntryVisible, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Padding="16" Margin="0,20,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Manual FinOps environment" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+                                <TextBlock Text="Provide an HTTPS base URL and add it here; it still needs a successful connection test."
+                                           Foreground="{StaticResource MutedBrush}" Margin="0,4,0,12" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding ManualDisplayName, UpdateSourceTrigger=PropertyChanged}" ToolTip="Display name" Margin="0,0,8,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding ManualFinOpsUrl, UpdateSourceTrigger=PropertyChanged}" ToolTip="https://...operations.dynamics.com" Margin="0,0,8,0" />
+                                    <Button Grid.Column="2" Content="Add" Command="{Binding AddManualEnvironmentCommand}" Margin="0" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="4  Summary">
+                <StackPanel Margin="30">
+                    <TextBlock Text="Configuration summary" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+                    <TextBlock Text="Review the account and connection status before saving locally."
+                               Foreground="{StaticResource MutedBrush}" Margin="0,7,0,22" />
+                    <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Padding="20" CornerRadius="4" MaxWidth="760" HorizontalAlignment="Left">
+                        <StackPanel>
+                            <TextBlock Text="ACCOUNT" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="Bold" />
+                            <TextBlock Text="{Binding SessionDisplay}" Foreground="{StaticResource InkBrush}" FontSize="15" Margin="0,5,0,18" />
+                            <TextBlock Text="SOURCE ENVIRONMENT" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="Bold" />
+                            <TextBlock Text="{Binding SourceSummary}" Foreground="{StaticResource InkBrush}" TextWrapping="Wrap" Margin="0,5,0,18" />
+                            <TextBlock Text="TARGET ENVIRONMENT" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="Bold" />
+                            <TextBlock Text="{Binding TargetSummary}" Foreground="{StaticResource InkBrush}" TextWrapping="Wrap" Margin="0,5,0,18" />
+                            <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                        <Button Content="Clear saved configuration" Command="{Binding ClearConfigurationCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="24,14">
+            <Grid>
+                <TextBlock Text="{Binding FooterStatus}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Cancel operation" Command="{Binding CancelOperationCommand}" IsEnabled="{Binding IsBusy}" />
+                    <Button Content="Back" Command="{Binding PreviousStepCommand}" />
+                    <Button Content="{Binding PrimaryActionLabel}" Command="{Binding NextStepCommand}" Margin="0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

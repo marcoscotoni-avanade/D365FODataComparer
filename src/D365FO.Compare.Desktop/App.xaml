@@ -1,0 +1,32 @@
+﻿<Application x:Class="D365FO.Compare.Desktop.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:D365FO.Compare.Desktop"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <SolidColorBrush x:Key="InkBrush" Color="#172B3A" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#60727F" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#087E78" />
+        <SolidColorBrush x:Key="PageBrush" Color="#F3F6F5" />
+        <SolidColorBrush x:Key="LineBrush" Color="#DCE5E2" />
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        </Style>
+    </Application.Resources>
+</Application>

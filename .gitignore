@@ -1,0 +1,6 @@
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+/src/D365FO.Compare.Desktop/appsettings.local.json

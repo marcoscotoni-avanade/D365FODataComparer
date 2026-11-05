@@ -1,0 +1,103 @@
+﻿using System.IO;
+using System.Net.Http;
+using System.Windows;
+using D365FO.Compare.Application.Authentication;
+using D365FO.Compare.Application.Configuration;
+using D365FO.Compare.Application.EnvironmentDiscovery;
+using D365FO.Compare.Application.Validation;
+using D365FO.Compare.Desktop.ViewModels;
+using D365FO.Compare.Infrastructure.Authentication;
+using D365FO.Compare.Infrastructure.EnvironmentDiscovery;
+using D365FO.Compare.Infrastructure.Persistence;
+using D365FO.Compare.Infrastructure.Validation;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Serilog;
+
+namespace D365FO.Compare.Desktop;
+
+/// <summary>
+/// Interaction logic for App.xaml
+/// </summary>
+public partial class App : System.Windows.Application
+{
+	private IHost? _host;
+
+	protected override async void OnStartup(StartupEventArgs e)
+	{
+		base.OnStartup(e);
+
+		var logDirectory = Path.Combine(
+			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+			"D365FODataComparisonTool",
+			"Logs");
+		Directory.CreateDirectory(logDirectory);
+
+		var logger = new LoggerConfiguration()
+			.MinimumLevel.Information()
+			.WriteTo.File(Path.Combine(logDirectory, "app-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 14)
+			.CreateLogger();
+
+		try
+		{
+			_host = Host.CreateDefaultBuilder(e.Args)
+				.UseContentRoot(AppContext.BaseDirectory)
+				.ConfigureAppConfiguration((_, configuration) =>
+					configuration.AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: false))
+				.ConfigureLogging(logging =>
+				{
+					logging.ClearProviders();
+					logging.AddSerilog(logger, dispose: true);
+				})
+				.ConfigureServices((_, services) =>
+				{
+					services.AddSingleton<IAuthenticationService, MsalAuthenticationService>();
+					services.AddSingleton<IConfigurationRepository, JsonConfigurationRepository>();
+					services.AddSingleton<IFinOpsHostPolicy, ApprovedFinOpsHostPolicy>();
+					services.AddHttpClient("power-platform")
+						.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+					services.AddHttpClient("finops")
+						.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+					services.AddSingleton<IEnvironmentDiscoveryProvider>(provider => new PowerPlatformEnvironmentDiscoveryProvider(
+						provider.GetRequiredService<IHttpClientFactory>().CreateClient("power-platform"),
+						provider.GetRequiredService<IAuthenticationService>(),
+						provider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
+						provider.GetRequiredService<ILogger<PowerPlatformEnvironmentDiscoveryProvider>>()));
+					services.AddSingleton<IConnectionValidationService>(provider => new FinOpsConnectionValidationService(
+						provider.GetRequiredService<IHttpClientFactory>().CreateClient("finops"),
+						provider.GetRequiredService<IAuthenticationService>(),
+						provider.GetRequiredService<IFinOpsHostPolicy>(),
+						provider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()));
+					services.AddSingleton<MainViewModel>();
+					services.AddTransient<MainWindow>();
+				})
+				.Build();
+
+			await _host.StartAsync();
+			var window = _host.Services.GetRequiredService<MainWindow>();
+			MainWindow = window;
+			window.Show();
+			await window.InitializeAsync();
+		}
+		catch (Exception exception)
+		{
+			logger.Error(exception, "The application could not start.");
+			MessageBox.Show(
+				"The application could not start. Check the local log for details.",
+				"D365FO Data Comparison Tool",
+				MessageBoxButton.OK,
+				MessageBoxImage.Error);
+			Shutdown(-1);
+		}
+	}
+
+	protected override void OnExit(ExitEventArgs e)
+	{
+		_host?.StopAsync().GetAwaiter().GetResult();
+		_host?.Dispose();
+		base.OnExit(e);
+	}
+}
+
