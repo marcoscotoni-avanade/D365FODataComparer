@@ -4,6 +4,7 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -16,9 +17,12 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\D365FO.Compare.Desktop\D365FO.Compare.Desktop.csproj" />
     <ProjectReference Include="..\..\src\D365FO.Compare.Domain\D365FO.Compare.Domain.csproj" />
     <ProjectReference Include="..\..\src\D365FO.Compare.Application\D365FO.Compare.Application.csproj" />
     <ProjectReference Include="..\..\src\D365FO.Compare.Infrastructure\D365FO.Compare.Infrastructure.csproj" />

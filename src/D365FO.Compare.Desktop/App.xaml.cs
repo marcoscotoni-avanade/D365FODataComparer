@@ -2,11 +2,17 @@
 using System.Net.Http;
 using System.Windows;
 using D365FO.Compare.Application.Authentication;
+using D365FO.Compare.Application.Comparison;
+using D365FO.Compare.Application.Metadata;
 using D365FO.Compare.Application.Configuration;
 using D365FO.Compare.Application.EnvironmentDiscovery;
 using D365FO.Compare.Application.Validation;
 using D365FO.Compare.Desktop.ViewModels;
 using D365FO.Compare.Infrastructure.Authentication;
+using D365FO.Compare.Infrastructure.FoHttp;
+using D365FO.Compare.Infrastructure.Metadata;
+using D365FO.Compare.Infrastructure.ODataEdm;
+using D365FO.Compare.Infrastructure.RestMetadata;
 using D365FO.Compare.Infrastructure.EnvironmentDiscovery;
 using D365FO.Compare.Infrastructure.Persistence;
 using D365FO.Compare.Infrastructure.Validation;
@@ -60,6 +66,24 @@ public partial class App : System.Windows.Application
 						.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 					services.AddHttpClient("finops")
 						.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+					services.AddHttpClient("finops-metadata", client => client.Timeout = Timeout.InfiniteTimeSpan)
+						.RemoveAllLoggers()
+						.ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+						{
+							AllowAutoRedirect = false,
+							ConnectTimeout = TimeSpan.FromSeconds(60)
+						});
+					services.AddSingleton(provider => new FoMetadataHttpClient(
+						provider.GetRequiredService<IHttpClientFactory>().CreateClient("finops-metadata"),
+						provider.GetRequiredService<IConfiguration>()));
+					services.AddSingleton<MetadataWindowContext>();
+					services.AddSingleton<CsdlSchemaParser>();
+					services.AddSingleton<DataEntitiesClient>();
+					services.AddSingleton<EntityCatalogCorrelator>();
+					services.AddSingleton<IEntityMetadataProvider, EntityMetadataProvider>();
+					services.AddSingleton<ISchemaSnapshotRepository, JsonSchemaSnapshotRepository>();
+					services.AddSingleton<SchemaComparisonService>();
+					services.AddSingleton<MetadataWorkspaceViewModel>();
 					services.AddSingleton<IEnvironmentDiscoveryProvider>(provider => new PowerPlatformEnvironmentDiscoveryProvider(
 						provider.GetRequiredService<IHttpClientFactory>().CreateClient("power-platform"),
 						provider.GetRequiredService<IAuthenticationService>(),

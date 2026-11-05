@@ -39,7 +39,8 @@ public partial class MainViewModel : ObservableObject
         IConfigurationRepository configurationRepository,
         IConnectionValidationService connectionValidationService,
         IFinOpsHostPolicy finOpsHostPolicy,
-        ILogger<MainViewModel> logger)
+        ILogger<MainViewModel> logger,
+        MetadataWorkspaceViewModel workspace)
     {
         _authenticationService = authenticationService;
         _discoveryProvider = discoveryProvider;
@@ -47,11 +48,21 @@ public partial class MainViewModel : ObservableObject
         _connectionValidationService = connectionValidationService;
         _finOpsHostPolicy = finOpsHostPolicy;
         _logger = logger;
+        Workspace = workspace;
+        Workspace.ConnectionValidationRequested += (_, _) =>
+        {
+            if (IsBusy) return;
+            ActiveAreaIndex = 0;
+            CurrentStepIndex = 2;
+        };
         EnvironmentsView = CollectionViewSource.GetDefaultView(DiscoveredEnvironments);
         EnvironmentsView.Filter = FilterEnvironment;
     }
 
     public ObservableCollection<DiscoveredEnvironment> DiscoveredEnvironments { get; } = [];
+    public MetadataWorkspaceViewModel Workspace { get; }
+    [ObservableProperty]
+    private int activeAreaIndex;
     public ICollectionView EnvironmentsView { get; }
     public IReadOnlyList<string> AvailableTypes => ["All types", .. DiscoveredEnvironments.Select(item => item.PowerPlatformType).OfType<string>().Where(NotBlank).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)];
     public IReadOnlyList<string> AvailableStates => ["All states", .. DiscoveredEnvironments.Select(item => item.State).OfType<string>().Where(NotBlank).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)];
@@ -152,6 +163,7 @@ public partial class MainViewModel : ObservableObject
             if (_loadedConfiguration is not null)
             {
                 RestoreSelection(_loadedConfiguration);
+                await RestoreWorkspaceAsync();
             }
 
             if (_session is null && _loadedConfiguration?.AuthenticationContext is not null)
@@ -187,6 +199,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             StatusMessage = "Signed in. Discover environments to continue.";
+            await RestoreWorkspaceAsync();
         });
     }
 
@@ -205,6 +218,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             StatusMessage = "Account changed. Discover environments to continue.";
+            await RestoreWorkspaceAsync();
         });
     }
 
@@ -367,12 +381,15 @@ public partial class MainViewModel : ObservableObject
             await _configurationRepository.SaveAsync(configuration, cancellationToken);
             _loadedConfiguration = configuration;
             StatusMessage = "Configuration saved locally.";
+            await Workspace.ConfigureAsync(configuration, _session!, canRefresh: true, cancellationToken);
+            ActiveAreaIndex = 1;
         });
     }
 
     [RelayCommand]
     private async Task ClearConfigurationAsync()
     {
+        Workspace.Reset();
         await _configurationRepository.DeleteAsync(CancellationToken.None);
         _loadedConfiguration = null;
         SelectedSource = null;
@@ -423,6 +440,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedSourceChanged(DiscoveredEnvironment? value)
     {
+        Workspace.Reset();
         if (value is not null)
         {
             _finOpsHostPolicy.Approve(value.FinOpsUrl);
@@ -439,6 +457,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedTargetChanged(DiscoveredEnvironment? value)
     {
+        Workspace.Reset();
         if (value is not null)
         {
             _finOpsHostPolicy.Approve(value.FinOpsUrl);
@@ -682,6 +701,12 @@ public partial class MainViewModel : ObservableObject
         }
 
         StatusMessage = "The tenant changed. Previously saved environments cannot be reused.";
+    }
+
+    private async Task RestoreWorkspaceAsync()
+    {
+        if (_session is not null && _loadedConfiguration is not null)
+            await Workspace.ConfigureAsync(_loadedConfiguration, _session, canRefresh: false, CancellationToken.None);
     }
 
     private void UpdateSessionDisplay() =>

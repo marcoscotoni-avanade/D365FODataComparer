@@ -1,0 +1,173 @@
+<UserControl x:Class="D365FO.Compare.Desktop.Views.MetadataWorkspaceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="SchemaGrid" TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="EnableRowVirtualization" Value="True" />
+            <Setter Property="EnableColumnVirtualization" Value="True" />
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
+            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+            <Setter Property="SelectionMode" Value="Single" />
+            <Setter Property="RowHeight" Value="30" />
+            <Setter Property="MinColumnWidth" Value="80" />
+        </Style>
+        <DataTemplate x:Key="EnvironmentPanel">
+            <Grid Margin="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" MinHeight="80" />
+                    <RowDefinition Height="6" />
+                    <RowDefinition Height="*" MinHeight="80" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding Origin}" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Row="1" Margin="0,6,0,6">
+                    <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="{Binding CapturedAt}" Foreground="{StaticResource MutedBrush}" FontSize="11" />
+                </StackPanel>
+                <DockPanel Grid.Row="2" Margin="0,0,0,8">
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding Counts}" VerticalAlignment="Center" FontSize="11" Margin="8,0,0,0" />
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search OData or FO entity name" MinWidth="80" />
+                </DockPanel>
+                <DataGrid Grid.Row="3" Style="{StaticResource SchemaGrid}" ItemsSource="{Binding VisibleEntities}" SelectedItem="{Binding SelectedEntity}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="EntitySet" Binding="{Binding EntitySetName}" Width="180" />
+                        <DataGridTextColumn Header="FO entity" Binding="{Binding FoEntityName, TargetNullValue=Unknown}" Width="180" />
+                        <DataGridTextColumn Header="Fields" Binding="{Binding Fields.Count}" Width="55" />
+                        <DataGridTextColumn Header="Mapping" Binding="{Binding Correlation}" Width="110" />
+                        <DataGridTextColumn Header="EDM type" Binding="{Binding EntityTypeFullName}" Width="260" />
+                    </DataGrid.Columns>
+                </DataGrid>
+                <GridSplitter Grid.Row="4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{StaticResource LineBrush}" />
+                <TabControl Grid.Row="5" Background="White" BorderBrush="{StaticResource LineBrush}">
+                    <TabItem Header="Fields">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <TextBlock Text="{Binding KeyDisplay, StringFormat=Key: {0}}" Margin="6" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+                            <DataGrid Grid.Row="1" Style="{StaticResource SchemaGrid}" ItemsSource="{Binding SelectedEntity.Fields}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Field" Binding="{Binding Name}" Width="150" />
+                                    <DataGridTextColumn Header="EDM type" Binding="{Binding TypeFullName}" Width="140" />
+                                    <DataGridCheckBoxColumn Header="Collection" Binding="{Binding IsCollection, Mode=OneWay}" Width="75" />
+                                    <DataGridTextColumn Header="Nullable" Binding="{Binding Nullable}" Width="90" />
+                                    <DataGridTextColumn Header="MaxLength" Binding="{Binding MaxLength}" Width="90" />
+                                    <DataGridTextColumn Header="Precision" Binding="{Binding Precision}" Width="80" />
+                                    <DataGridTextColumn Header="Scale" Binding="{Binding Scale}" Width="80" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="Details">
+                        <TextBox Text="{Binding SelectedDetails, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" FontSize="11"
+                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+                    </TabItem>
+                    <TabItem Header="FO catalog only">
+                        <DataGrid Style="{StaticResource SchemaGrid}" ItemsSource="{Binding CatalogOnly}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="FO entity" Binding="{Binding Name}" Width="200" />
+                                <DataGridTextColumn Header="Public collection" Binding="{Binding PublicCollectionName}" Width="180" />
+                                <DataGridTextColumn Header="Public entity" Binding="{Binding PublicEntityName}" Width="180" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </TabItem>
+                    <TabItem Header="Diagnostics">
+                        <TextBox Text="{Binding Diagnostics, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+    <Grid Margin="16,12">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <WrapPanel Margin="0,0,0,8">
+            <Button Content="Validate connections" Command="{Binding ValidateConnectionsCommand}" />
+            <Button Content="Load / refresh both" Command="{Binding LoadBothCommand}" IsEnabled="{Binding CanRefresh}" Background="{StaticResource AccentBrush}" Foreground="White" />
+            <Button Content="Refresh Source" Command="{Binding RefreshSourceCommand}" IsEnabled="{Binding CanRefresh}" />
+            <Button Content="Refresh Target" Command="{Binding RefreshTargetCommand}" IsEnabled="{Binding CanRefresh}" />
+            <Button Content="Clear schema cache" Command="{Binding ClearCacheCommand}" IsEnabled="{Binding IsNotBusy}" />
+            <Button Content="Cancel" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
+            <TextBlock Text="{Binding ConnectionState}" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Margin="0,4" />
+        </WrapPanel>
+        <ProgressBar Grid.Row="1" Height="3" Margin="0,0,0,6" IsIndeterminate="{Binding IsBusy}" />
+        <TabControl x:Name="WorkspaceTabs" Grid.Row="2" Background="White" BorderBrush="{StaticResource LineBrush}">
+            <TabItem Header="Catalogs">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="300" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" MinWidth="300" /></Grid.ColumnDefinitions>
+                    <ContentControl Content="{Binding Source}" ContentTemplate="{StaticResource EnvironmentPanel}" />
+                    <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="{StaticResource LineBrush}" />
+                    <ContentControl Grid.Column="2" Content="{Binding Target}" ContentTemplate="{StaticResource EnvironmentPanel}" />
+                </Grid>
+            </TabItem>
+            <TabItem Header="Comparison scope">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <WrapPanel Margin="0,0,0,12" IsEnabled="{Binding IsNotBusy}">
+                        <RadioButton Content="All entities" IsChecked="{Binding CompareAll}" GroupName="Scope" VerticalAlignment="Center" Margin="0,0,20,0" />
+                        <RadioButton Content="Selected entities" IsChecked="{Binding SelectedOnly}" GroupName="Scope" VerticalAlignment="Center" Margin="0,0,20,0" />
+                        <Button Content="Compare schemas" Command="{Binding CompareCommand}" IsEnabled="{Binding CanCompare}" Background="{StaticResource AccentBrush}" Foreground="White" />
+                        <TextBlock Text="{Binding SelectionCount}" VerticalAlignment="Center" />
+                    </WrapPanel>
+                    <DockPanel Grid.Row="1" Margin="0,0,0,10" IsEnabled="{Binding IsNotBusy}">
+                        <Button DockPanel.Dock="Right" Content="Clear selection" Command="{Binding ClearSelectionCommand}" />
+                        <Button DockPanel.Dock="Right" Content="Select filtered" Command="{Binding SelectFilteredCommand}" />
+                        <TextBox Text="{Binding SelectionSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search the union of Source and Target entity sets" />
+                    </DockPanel>
+                    <DataGrid Grid.Row="2" Style="{StaticResource SchemaGrid}" IsReadOnly="False" ItemsSource="{Binding FilteredSelection}" IsEnabled="{Binding IsNotBusy}">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Select" Width="65">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="EntitySet" Binding="{Binding EntitySetName}" Width="*" IsReadOnly="True" />
+                            <DataGridCheckBoxColumn Header="Source" Binding="{Binding InSource, Mode=OneWay}" Width="90" IsReadOnly="True" />
+                            <DataGridCheckBoxColumn Header="Target" Binding="{Binding InTarget, Mode=OneWay}" Width="90" IsReadOnly="True" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Results">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="6" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <TextBlock Text="{Binding ResultSummary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,10" />
+                    <DockPanel Grid.Row="1" Margin="0,0,0,10">
+                        <ComboBox DockPanel.Dock="Right" Width="170" ItemsSource="{Binding SeverityFilters}" SelectedItem="{Binding SeverityFilter}" Margin="8,0,0,0" />
+                        <TextBox Text="{Binding ResultSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search comparison results" />
+                    </DockPanel>
+                    <DataGrid Grid.Row="2" Style="{StaticResource SchemaGrid}" ItemsSource="{Binding VisibleResults}" SelectedItem="{Binding SelectedResult}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="EntitySet" Binding="{Binding EntitySetName}" Width="*" MinWidth="220" />
+                            <DataGridTextColumn Header="Change" Binding="{Binding Kind}" Width="130" />
+                            <DataGridTextColumn Header="Severity" Binding="{Binding Severity}" Width="140" />
+                            <DataGridCheckBoxColumn Header="Conclusive" Binding="{Binding IsComplete, Mode=OneWay}" Width="100" />
+                            <DataGridTextColumn Header="Differences" Binding="{Binding Differences.Count}" Width="90" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" Background="{StaticResource LineBrush}" />
+                    <DataGrid Grid.Row="4" Style="{StaticResource SchemaGrid}" ItemsSource="{Binding SelectedResult.Differences}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Field / member" Binding="{Binding Member}" Width="160" />
+                            <DataGridTextColumn Header="Property" Binding="{Binding Property}" Width="150" />
+                            <DataGridTextColumn Header="Source" Binding="{Binding SourceValue, TargetNullValue=Missing}" Width="*" MinWidth="150" />
+                            <DataGridTextColumn Header="Target" Binding="{Binding TargetValue, TargetNullValue=Missing}" Width="*" MinWidth="150" />
+                            <DataGridTextColumn Header="Severity" Binding="{Binding Severity}" Width="130" />
+                            <DataGridCheckBoxColumn Header="Conclusive" Binding="{Binding IsConclusive, Mode=OneWay}" Width="90" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+        <TextBlock Grid.Row="3" Text="{Binding Status}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0" />
+    </Grid>
+</UserControl>
