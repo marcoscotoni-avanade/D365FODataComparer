@@ -9,13 +9,16 @@ public enum DataRecordStatus { Equal, Different, OnlySource, OnlyTarget, Duplica
 public enum DataEntityStatus { Pending, Completed, Failed, Canceled, LimitReached, Blocked }
 public sealed record RecordValue(RecordValueState State, string EdmType, string? Canonical, string? Original);
 public sealed record DataFilter(string Field, string Operator, string JsonValue);
+public sealed record AvailableFieldSelection(FieldSchema Field, bool IsSelected);
 public sealed record EntityDataPlan(string EntitySetName, DataScopeKind Scope, string? CompanyField,
-    IReadOnlyList<string> KeyFields, IReadOnlyList<string> ExcludedFields, IReadOnlyList<DataFilter> Filters);
+    IReadOnlyList<string> KeyFields, IReadOnlyList<string> ExcludedFields, IReadOnlyList<DataFilter> Filters,
+    IReadOnlyList<AvailableFieldSelection>? AvailableFields = null);
 public sealed record DataReadLimits(long MaxRows = 100000, int MaxPages = 1000, long MaxPageBytes = 33554432,
     long MaxSpoolBytes = 2147483648, int MaxEntities = 100);
 public sealed record DataComparisonProfile(string SourceCompany, string TargetCompany, IReadOnlyList<EntityDataPlan> Entities,
-    DataReadLimits Limits, int Version = 1, IReadOnlyList<string>? SkippedEntities = null,
-    bool AllEligible = false, IReadOnlyList<string>? SelectedEntities = null);
+    DataReadLimits Limits, int Version = 2, IReadOnlyList<string>? SkippedEntities = null,
+    bool AllEligible = false, IReadOnlyList<string>? SelectedEntities = null,
+    bool SourceCompanyUnverified = false, bool TargetCompanyUnverified = false);
 public sealed record DataComparisonRequest(EnvironmentConnection Source, EnvironmentConnection Target,
     SchemaSnapshot SourceSchema, SchemaSnapshot TargetSchema, DataComparisonProfile Profile);
 public sealed record PreparedEntityPlan(EntityDataPlan Plan, IReadOnlyList<FieldSchema> Fields, IReadOnlyList<string> Problems)
@@ -28,11 +31,25 @@ public sealed record DataRecordResult(string Key, DataRecordStatus Status,
     IReadOnlyList<DataValueDifference> Differences, IReadOnlyDictionary<string, RecordValue>? Source,
     IReadOnlyDictionary<string, RecordValue>? Target);
 public sealed record DataReadProgress(string Entity, string Side, string Stage, long Rows = 0, int Pages = 0, long Bytes = 0);
+public sealed record DataFailureDiagnostic(string Side, string Stage, int? Page, string ExceptionType, string Reason,
+    int? HttpStatus = null, string? RequestId = null, string? ServerErrorCode = null, string? JsonPath = null,
+    long? LineNumber = null, long? BytePosition = null, string? InnerExceptionType = null)
+{
+    public override string ToString() => $"Side: {Side}\nStage: {Stage}\nPage: {Page?.ToString() ?? "N/A"}\n" +
+        $"Exception: {ExceptionType}\nReason: {Reason}" +
+        (HttpStatus is null ? "" : $"\nHTTP status: {HttpStatus}") +
+        (RequestId is null ? "" : $"\nRequest ID: {RequestId}") +
+        (ServerErrorCode is null ? "" : $"\nServer error code: {ServerErrorCode}") +
+        (JsonPath is null ? "" : $"\nJSON path: {JsonPath}") +
+        (LineNumber is null ? "" : $"\nJSON line: {LineNumber}; byte position: {BytePosition}") +
+        (InnerExceptionType is null ? "" : $"\nInner exception: {InnerExceptionType}");
+}
 public sealed record DataEntityRunResult(string EntitySetName, DataEntityStatus Status, long SourceRows, long TargetRows,
     long Equal, long Different, long OnlySource, long OnlyTarget, long Inconclusive, DateTimeOffset StartedUtc,
-    DateTimeOffset FinishedUtc, string? Message = null)
+    DateTimeOffset FinishedUtc, string? Message = null, DataFailureDiagnostic? Diagnostic = null)
 {
     public bool IsComplete => Status == DataEntityStatus.Completed && Inconclusive == 0;
+    public string DiagnosticDetails => Diagnostic?.ToString() ?? Message ?? "";
 }
 public sealed record DataRunManifest(Guid RunId, DataComparisonRequest Request, DateTimeOffset StartedUtc,
     DateTimeOffset? FinishedUtc, IReadOnlyList<DataEntityRunResult> Entities)

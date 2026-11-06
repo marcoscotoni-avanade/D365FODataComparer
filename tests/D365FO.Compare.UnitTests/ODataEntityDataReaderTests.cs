@@ -26,7 +26,7 @@ public sealed class ODataEntityDataReaderTests
                 Assert.Contains("Company eq 'IT'", query);
                 Assert.Contains("cross-company=true", query);
                 Assert.DoesNotContain("$top", query);
-                Assert.Contains("$select=Account,Company,Credit,Status", query);
+                Assert.DoesNotContain("$select", query);
             }
             return new(HttpStatusCode.OK) { Content = new StringContent(count == 1
                 ? """{"value":[{"Company":"IT","Account":"A","Credit":"1.0","Status":"Open"}],"@odata.nextLink":"?$skiptoken=opaque"}"""
@@ -44,10 +44,13 @@ public sealed class ODataEntityDataReaderTests
     {
         var calls = 0;
         using var http = new HttpClient(new Handler(_ => { calls++; return new(HttpStatusCode.Forbidden); }));
-        await Assert.ThrowsAsync<DataAuthorizationException>(async () =>
+        var error = await Assert.ThrowsAsync<DataReadDiagnosticException>(async () =>
         {
             await foreach (var page in Create(http).ReadPagesAsync(Environment, SchemaComparisonTests.Snapshot(), DataComparisonTests.Prepared, "IT", new(), null, "Source", default)) { }
         });
+        Assert.True(error.IsAuthorizationFailure);
+        Assert.IsType<DataAuthorizationException>(error.InnerException);
+        Assert.Equal(403, error.Diagnostic.HttpStatus);
         Assert.Equal(1, calls);
     }
     [Theory]
@@ -63,11 +66,13 @@ public sealed class ODataEntityDataReaderTests
         using var http = new HttpClient(new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(
             """{"value":[{"Company":"IT","Account":"A","Credit":1,"Status":"Open"}],"@odata.nextLink":"?$skiptoken=more"}""") }));
         var rows = 0;
-        await Assert.ThrowsAsync<DataLimitException>(async () =>
+        var error = await Assert.ThrowsAsync<DataReadDiagnosticException>(async () =>
         {
             await foreach (var page in Create(http).ReadPagesAsync(Environment, SchemaComparisonTests.Snapshot(), DataComparisonTests.Prepared, "IT",
                 new DataReadLimits(MaxRows: 1), null, "Source", default)) rows += page.Count;
         });
+        Assert.True(error.IsLimitFailure);
+        Assert.IsType<DataLimitException>(error.InnerException);
         Assert.Equal(1, rows);
     }
     [Fact]
@@ -78,6 +83,85 @@ public sealed class ODataEntityDataReaderTests
         Assert.Throws<InvalidDataException>(() => ODataEntityDataReader.ValidateNextLink(origin, initial, initial.AbsolutePath, "?$select=Secret", initial));
         Assert.Throws<InvalidDataException>(() => ODataEntityDataReader.ValidateNextLink(origin, initial, initial.AbsolutePath, "?$filter=Company%20eq%20'OTHER'", initial));
         Assert.Equal("?$skiptoken=opaque", ODataEntityDataReader.ValidateNextLink(origin, initial, initial.AbsolutePath, "?$skiptoken=opaque", initial).Query);
+    }
+
+    [Fact]
+    public async Task HttpErrorDiagnosticsPreserveStatusRequestIdAndSafeServerMessage()
+    {
+        const string requestId = "ec59282d-7160-4e51-a854-e7d837c778f8";
+        using var http = new HttpClient(new Handler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("""{"error":{"code":"BadRequest","message":"Property 'Account' failed for 'IT' and 'private-customer' at https://source.example/data/Customers?secret=1 Bearer TOKEN-SECRET"},"value":[{"Secret":"do-not-retain"}]}""")
+            };
+            response.Headers.Add("x-ms-request-id", requestId);
+            return response;
+        }));
+        var error = await Assert.ThrowsAsync<DataReadDiagnosticException>(async () =>
+        {
+            await foreach (var page in Create(http).ReadPagesAsync(Environment, SchemaComparisonTests.Snapshot(), DataComparisonTests.Prepared,
+                "IT", new(), null, "Source", default)) { }
+        });
+        Assert.Equal(400, error.Diagnostic.HttpStatus);
+        Assert.Equal(requestId, error.Diagnostic.RequestId);
+        Assert.Equal("BadRequest", error.Diagnostic.ServerErrorCode);
+        Assert.Equal("Source", error.Diagnostic.Side);
+        Assert.Equal(1, error.Diagnostic.Page);
+        Assert.Equal("Reading HTTP error response", error.Diagnostic.Stage);
+        Assert.Contains("Property 'Account'", error.Diagnostic.Reason);
+        var serialized = System.Text.Json.JsonSerializer.Serialize(error.Diagnostic);
+        Assert.DoesNotContain("TOKEN-SECRET", serialized);
+        Assert.DoesNotContain("private-customer", serialized);
+        Assert.DoesNotContain("do-not-retain", serialized);
+        Assert.DoesNotContain("source.example", serialized);
+        Assert.DoesNotContain("'IT'", error.Diagnostic.Reason);
+    }
+
+    [Fact]
+    public async Task InvalidJsonAndNextLinkFailuresHaveDistinctStages()
+    {
+        using var invalidJson = new HttpClient(new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent("{\"value\":[") }));
+        var parseError = await Assert.ThrowsAsync<DataReadDiagnosticException>(async () =>
+        {
+            await foreach (var page in Create(invalidJson).ReadPagesAsync(Environment, SchemaComparisonTests.Snapshot(), DataComparisonTests.Prepared,
+                "IT", new(), null, "Source", default)) { }
+        });
+        Assert.Equal("Parsing JSON response", parseError.Diagnostic.Stage);
+        Assert.IsAssignableFrom<System.Text.Json.JsonException>(parseError.InnerException);
+        Assert.Equal(parseError.InnerException!.GetType().Name, parseError.Diagnostic.ExceptionType);
+        Assert.NotNull(parseError.Diagnostic.BytePosition);
+
+        using var badNextLink = new HttpClient(new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(
+            """{"value":[{"Company":"IT","Account":"A","Credit":1,"Status":"Open"}],"@odata.nextLink":"https://other.example/data/Customers"}""") }));
+        var received = 0;
+        var pagingError = await Assert.ThrowsAsync<DataReadDiagnosticException>(async () =>
+        {
+            await foreach (var page in Create(badNextLink).ReadPagesAsync(Environment, SchemaComparisonTests.Snapshot(), DataComparisonTests.Prepared,
+                "IT", new(), null, "Source", default)) received += page.Count;
+        });
+        Assert.Equal(0, received);
+        Assert.Equal("Validating nextLink", pagingError.Diagnostic.Stage);
+        Assert.Equal(200, pagingError.Diagnostic.HttpStatus);
+        Assert.Equal("InvalidDataException", pagingError.Diagnostic.ExceptionType);
+    }
+
+    [Fact]
+    public void FullPagingAcceptsCompleteProjectionButExplicitPagingCannotBroadenIt()
+    {
+        var snapshot = SchemaComparisonTests.Snapshot();
+        var fields = snapshot.Entities[0].Fields;
+        var builder = new ODataQueryBuilder(new());
+        var origin = new Uri("https://source.example");
+        var full = builder.Build(origin, DataComparisonTests.Prepared, snapshot, "IT");
+        var names = fields.Select(property => property.Name).ToArray();
+        Assert.NotNull(ODataEntityDataReader.ValidateNextLink(origin, full, full.AbsolutePath, "?$select=" + string.Join(',', names), full, names));
+        Assert.NotNull(ODataEntityDataReader.ValidateNextLink(origin, full, full.AbsolutePath, "?$select=*", full, names));
+        Assert.Throws<InvalidDataException>(() => ODataEntityDataReader.ValidateNextLink(origin, full, full.AbsolutePath, "?$select=Credit", full, names));
+        var plan = DataComparisonTests.Plan with { AvailableFields = fields.Select(property => new AvailableFieldSelection(property, property.Name == "Credit")).ToArray() };
+        var prepared = new EntityDataEligibilityService().Prepare(snapshot, snapshot, plan);
+        var selected = builder.Build(origin, prepared, snapshot, "IT");
+        Assert.Throws<InvalidDataException>(() => ODataEntityDataReader.ValidateNextLink(origin, selected, selected.AbsolutePath, "?$select=*", selected, names));
     }
 
     private static ODataEntityDataReader Create(HttpClient http)

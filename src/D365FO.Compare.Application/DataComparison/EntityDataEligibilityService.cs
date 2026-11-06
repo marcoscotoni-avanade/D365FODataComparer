@@ -33,6 +33,15 @@ public sealed class EntityDataEligibilityService
         if (keys.Any(excluded.Contains)) problems.Add("Key fields cannot be excluded.");
         var left = before.Fields.ToDictionary(property => property.Name, StringComparer.Ordinal);
         var right = after.Fields.ToDictionary(property => property.Name, StringComparer.Ordinal);
+        var available = FieldSelectionPolicy.Resolve(plan, before.Fields);
+        var selected = available.Where(item => item.IsSelected).Select(item => item.Field.Name).ToHashSet(StringComparer.Ordinal);
+        if (available.Select(item => item.Field.Name).Distinct(StringComparer.Ordinal).Count() != available.Count)
+            problems.Add("The available field catalog contains duplicate names.");
+        foreach (var item in available)
+            if (!left.TryGetValue(item.Field.Name, out var current) || current.TypeFullName != item.Field.TypeFullName || current.IsCollection != item.Field.IsCollection)
+                problems.Add($"Saved field {item.Field.Name} does not match the current Source schema.");
+        if (selected.Count != 0 && selected.All(excluded.Contains))
+            problems.Add("All selected fields are excluded. Select an allowed field or clear the field selection for full mode.");
         foreach (var key in keys)
             if (!left.ContainsKey(key) || !right.ContainsKey(key)) problems.Add($"Key field {key} is missing.");
         foreach (var name in excluded)
@@ -40,6 +49,7 @@ public sealed class EntityDataEligibilityService
         var fields = new List<FieldSchema>();
         foreach (var name in left.Keys.Union(right.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
+            if (selected.Count != 0 && !selected.Contains(name) && !keys.Contains(name, StringComparer.Ordinal) && name != plan.CompanyField) continue;
             if (excluded.Contains(name) && !keys.Contains(name, StringComparer.Ordinal) && name != plan.CompanyField) continue;
             if (!left.TryGetValue(name, out var sourceProperty) || !right.TryGetValue(name, out var targetProperty))
             {
@@ -63,6 +73,6 @@ public sealed class EntityDataEligibilityService
                 || filter.Operator is not ("eq" or "ne" or "gt" or "ge" or "lt" or "le")
                 || property.EnumTypeFullName is not null && filter.Operator is not ("eq" or "ne"))
                 problems.Add($"Filter on {filter.Field} is invalid.");
-        return new PreparedEntityPlan(plan with { KeyFields = keys }, fields, problems);
+        return new PreparedEntityPlan(plan with { KeyFields = keys, AvailableFields = available }, fields, problems);
     }
 }

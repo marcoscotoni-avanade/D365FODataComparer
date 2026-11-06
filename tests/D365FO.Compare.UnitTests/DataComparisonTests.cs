@@ -83,4 +83,52 @@ public sealed class DataComparisonTests
         Assert.Null(new RecordValueCanonicalizer().ReadRecord(withoutKey.RootElement, Prepared, SchemaComparisonTests.Snapshot(), "IT").Key);
         Assert.Equal(RecordValueState.Invalid, Value("Edm.Duration", "\"P1M\"").State);
     }
+
+    [Fact]
+    public void FieldSelectionEmptyOmitsSelectAndExplicitSelectionAlwaysIncludesKeys()
+    {
+        var snapshot = SchemaComparisonTests.Snapshot();
+        var service = new EntityDataEligibilityService();
+        var builder = new ODataQueryBuilder(new());
+        var full = service.Prepare(snapshot, snapshot, Plan);
+        Assert.DoesNotContain("$select", builder.Build(new Uri("https://source.example"), full, snapshot, "IT").Query);
+        Assert.Contains("cross-company=true", builder.Build(new Uri("https://source.example"), full, snapshot, "IT").Query);
+        var selectedPlan = Plan with { AvailableFields = full.Fields.Select(property => new AvailableFieldSelection(property, property.Name == "Credit")).ToArray() };
+        var selected = service.Prepare(snapshot, snapshot, selectedPlan);
+        Assert.True(selected.IsReady);
+        Assert.Equal(["Account", "Company", "Credit"], selected.Fields.Select(property => property.Name));
+        Assert.Contains("$select=Account,Company,Credit", Uri.UnescapeDataString(builder.Build(new Uri("https://source.example"), selected, snapshot, "IT").Query));
+        var shared = service.Prepare(snapshot, snapshot, Plan with { Scope = DataScopeKind.Shared, CompanyField = null });
+        Assert.Equal("", builder.Build(new Uri("https://source.example"), shared, snapshot, "").Query);
+    }
+
+    [Fact]
+    public void FieldSelectionFullWithExclusionsDoesNotPersistExcludedValues()
+    {
+        var snapshot = SchemaComparisonTests.Snapshot();
+        var catalog = Prepared.Fields.Select(property => new AvailableFieldSelection(property, false)).ToArray();
+        var plan = Plan with { AvailableFields = catalog, ExcludedFields = ["Credit"] };
+        var prepared = new EntityDataEligibilityService().Prepare(snapshot, snapshot, plan);
+        Assert.DoesNotContain("$select", new ODataQueryBuilder(new()).Build(new Uri("https://source.example"), prepared, snapshot, "IT").Query);
+        using var row = JsonDocument.Parse("""{"Company":"IT","Account":"A","Credit":123,"Status":"Open"}""");
+        var record = new RecordValueCanonicalizer().ReadRecord(row.RootElement, prepared, snapshot, "IT");
+        Assert.False(record.Values.ContainsKey("Credit"));
+        var allExcluded = plan with { AvailableFields = catalog.Select(item => item with { IsSelected = item.Field.Name == "Credit" }).ToArray() };
+        Assert.False(new EntityDataEligibilityService().Prepare(snapshot, snapshot, allExcluded).IsReady);
+    }
+
+    [Fact]
+    public void FieldSelectionLargeFullProjectionDoesNotCreateLongQuery()
+    {
+        var snapshot = SchemaComparisonTests.Snapshot();
+        var entity = snapshot.Entities[0];
+        var fields = entity.Fields.Concat(Enumerable.Range(0, 314).Select(index => entity.Fields[0] with { Name = "LongCustomerFieldName" + index })).ToArray();
+        snapshot = snapshot with { Entities = [entity with { Fields = fields }] };
+        var service = new EntityDataEligibilityService();
+        var builder = new ODataQueryBuilder(new());
+        var full = service.Prepare(snapshot, snapshot, Plan);
+        Assert.True(builder.Build(new Uri("https://source.example"), full, snapshot, "IT").Query.Length < 200);
+        var explicitAll = service.Prepare(snapshot, snapshot, Plan with { AvailableFields = fields.Select(property => new AvailableFieldSelection(property, true)).ToArray() });
+        Assert.True(builder.Build(new Uri("https://source.example"), explicitAll, snapshot, "IT").Query.Length > 7000);
+    }
 }

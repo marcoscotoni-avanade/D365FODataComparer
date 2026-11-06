@@ -9,7 +9,9 @@ public sealed class ODataQueryBuilder(RecordValueCanonicalizer canonicalizer)
     public Uri Build(Uri origin, PreparedEntityPlan plan, SchemaSnapshot schema, string company)
     {
         if (!plan.IsReady) throw new InvalidOperationException("The entity data plan is not eligible.");
-        var select = string.Join(',', plan.Fields.Select(property => property.Name));
+        var parameters = new List<string>();
+        if (plan.Plan.AvailableFields?.Any(item => item.IsSelected) == true)
+            parameters.Add("$select=" + Uri.EscapeDataString(string.Join(',', plan.Fields.Select(property => property.Name))));
         var filters = new List<string>();
         if (plan.Plan.Scope == DataScopeKind.Company)
         {
@@ -27,10 +29,10 @@ public sealed class ODataQueryBuilder(RecordValueCanonicalizer canonicalizer)
                 : value.Original!;
             filters.Add(property.Name + " " + filter.Operator + " " + literal);
         }
-        var query = "$select=" + Uri.EscapeDataString(select);
-        if (plan.Plan.Scope == DataScopeKind.Company) query += "&cross-company=true";
-        if (filters.Count != 0) query += "&$filter=" + Uri.EscapeDataString(string.Join(" and ", filters.Select(filter => "(" + filter + ")")));
-        return new Uri(origin, "/data/" + Uri.EscapeDataString(plan.Plan.EntitySetName) + "?" + query);
+        if (plan.Plan.Scope == DataScopeKind.Company) parameters.Add("cross-company=true");
+        if (filters.Count != 0) parameters.Add("$filter=" + Uri.EscapeDataString(string.Join(" and ", filters.Select(filter => "(" + filter + ")"))));
+        var query = parameters.Count == 0 ? "" : "?" + string.Join('&', parameters);
+        return new Uri(origin, "/data/" + Uri.EscapeDataString(plan.Plan.EntitySetName) + query);
     }
     private static string Quote(string value) => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
 }

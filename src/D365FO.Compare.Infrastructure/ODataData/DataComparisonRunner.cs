@@ -27,6 +27,10 @@ public sealed class DataComparisonRunner(IEntityDataReader reader, EntityDataEli
             long targetRows = 0;
             var status = DataEntityStatus.Completed;
             string? message = null;
+            DataFailureDiagnostic? diagnostic = null;
+            var side = "Source";
+            var stage = "Reading data";
+            var pageNumber = 0;
             var prepared = eligibility.Prepare(request.SourceSchema, request.TargetSchema, plan);
             if (stop || !prepared.IsReady)
             {
@@ -40,15 +44,25 @@ public sealed class DataComparisonRunner(IEntityDataReader reader, EntityDataEli
                 await foreach (var page in reader.ReadPagesAsync(request.Source, request.SourceSchema, prepared, request.Profile.SourceCompany,
                     limits, progress, "Source", cancellationToken).ConfigureAwait(false))
                 {
+                    stage = "Saving data page";
+                    pageNumber++;
                     await store.AddPageAsync(plan.EntitySetName, "Source", page, cancellationToken).ConfigureAwait(false);
                     sourceRows += page.Count;
+                    stage = "Reading data";
                 }
+                side = "Target";
+                pageNumber = 0;
                 await foreach (var page in reader.ReadPagesAsync(request.Target, request.TargetSchema, prepared, request.Profile.TargetCompany,
                     limits, progress, "Target", cancellationToken).ConfigureAwait(false))
                 {
+                    stage = "Saving data page";
+                    pageNumber++;
                     await store.AddPageAsync(plan.EntitySetName, "Target", page, cancellationToken).ConfigureAwait(false);
                     targetRows += page.Count;
+                    stage = "Reading data";
                 }
+                side = "Both";
+                stage = "Matching records";
                 progress?.Report(new(plan.EntitySetName, "Both", "Matching complete acquisitions", sourceRows + targetRows));
                 var batch = new List<DataRecordResult>(100);
                 await foreach (var group in store.MatchAsync(plan.EntitySetName, cancellationToken).ConfigureAwait(false))
@@ -59,11 +73,17 @@ public sealed class DataComparisonRunner(IEntityDataReader reader, EntityDataEli
                     batch.Add(result);
                     if (batch.Count == 100)
                     {
+                        stage = "Saving comparison results";
                         await store.AddResultsAsync(plan.EntitySetName, batch, cancellationToken).ConfigureAwait(false);
                         batch.Clear();
+                        stage = "Matching records";
                     }
                 }
-                if (batch.Count > 0) await store.AddResultsAsync(plan.EntitySetName, batch, cancellationToken).ConfigureAwait(false);
+                if (batch.Count > 0)
+                {
+                    stage = "Saving comparison results";
+                    await store.AddResultsAsync(plan.EntitySetName, batch, cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -73,14 +93,27 @@ public sealed class DataComparisonRunner(IEntityDataReader reader, EntityDataEli
             }
             catch (DataAuthorizationException exception) { status = DataEntityStatus.Failed; message = exception.Message; stop = true; }
             catch (DataLimitException exception) { status = DataEntityStatus.LimitReached; message = exception.Message; }
+            catch (DataReadDiagnosticException exception)
+            {
+                diagnostic = exception.Diagnostic;
+                status = exception.IsLimitFailure ? DataEntityStatus.LimitReached : DataEntityStatus.Failed;
+                stop = exception.IsAuthorizationFailure;
+                message = $"{diagnostic.Side}: {diagnostic.Stage} failed ({diagnostic.ExceptionType}" +
+                    (diagnostic.HttpStatus is null ? ")." : $", HTTP {diagnostic.HttpStatus}).");
+            }
             catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.Json.JsonException
                 or InvalidOperationException or FormatException or HttpRequestException or OperationCanceledException)
             {
                 status = DataEntityStatus.Failed;
-                message = exception is InvalidOperationException ? exception.Message : "The entity acquisition or comparison failed. Verify entity access, scope and payload compatibility.";
+                var json = exception as System.Text.Json.JsonException;
+                diagnostic = new(side, stage, side == "Both" ? null : stage == "Reading data" ? pageNumber + 1 : pageNumber,
+                    exception.GetType().Name, DataErrorDetails.Message(exception.Message),
+                    JsonPath: json?.Path, LineNumber: json?.LineNumber, BytePosition: json?.BytePositionInLine,
+                    InnerExceptionType: exception.InnerException?.GetType().Name);
+                message = $"{side}: {stage} failed ({exception.GetType().Name}).";
             }
             results.Add(new(plan.EntitySetName, status, sourceRows, targetRows, counts[0], counts[1], counts[2], counts[3],
-                counts[4] + counts[5] + counts[6], started, DateTimeOffset.UtcNow, message));
+                counts[4] + counts[5] + counts[6], started, DateTimeOffset.UtcNow, message, diagnostic));
             progress?.Report(new(plan.EntitySetName, "Both", status.ToString(), sourceRows + targetRows));
         }
         return run with { FinishedUtc = DateTimeOffset.UtcNow, Entities = results };

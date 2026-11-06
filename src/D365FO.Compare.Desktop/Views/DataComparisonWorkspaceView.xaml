@@ -19,26 +19,45 @@
             <TextBlock Text="{Binding EnvironmentPair}" FontWeight="SemiBold" FontSize="16" TextWrapping="Wrap" />
         </DockPanel>
         <WrapPanel Grid.Row="1" Margin="0,0,0,8">
+            <Button Content="Load setup" Command="{Binding LoadSetupCommand}" IsEnabled="{Binding CanLoadSetup}" Background="{StaticResource AccentBrush}" Foreground="White" />
             <Button Content="Validate connections" Command="{Binding ValidateConnectionsCommand}" IsEnabled="{Binding IsNotBusy}" />
             <Button Content="Start data comparison" Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" Background="{StaticResource AccentBrush}" Foreground="White" />
             <Button Content="Cancel" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
-            <Button Content="Save profile" Command="{Binding SaveProfileCommand}" IsEnabled="{Binding IsNotBusy}" />
-            <Button Content="Load profile" Command="{Binding LoadProfileCommand}" IsEnabled="{Binding IsNotBusy}" />
+            <Button Content="Save profile" Command="{Binding SaveProfileCommand}" IsEnabled="{Binding IsOperationalFormEnabled}" />
+            <Button Content="Load profile" Command="{Binding LoadProfileCommand}" IsEnabled="{Binding IsOperationalFormEnabled}" />
             <Button Content="Clear data results" Command="{Binding ClearResultsCommand}" IsEnabled="{Binding IsNotBusy}" />
         </WrapPanel>
         <StackPanel Grid.Row="2" Margin="0,0,0,6">
+            <WrapPanel>
+                <TextBlock Text="{Binding SetupSummary}" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{StaticResource MutedBrush}" />
+                <Button Content="Manual Source / list" Command="{Binding ManualSourceCommand}" IsEnabled="{Binding CanUseManualSource}" />
+                <Button Content="Manual Target / list" Command="{Binding ManualTargetCommand}" IsEnabled="{Binding CanUseManualTarget}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding SourceCompanyState}" Foreground="{StaticResource MutedBrush}" />
+            <TextBlock Text="{Binding TargetCompanyState}" Foreground="{StaticResource MutedBrush}" />
+            <Expander Header="Setup diagnostics" IsExpanded="False">
+                <TextBox Text="{Binding SetupDetails, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="120" VerticalScrollBarVisibility="Auto" />
+            </Expander>
             <ProgressBar Height="3" IsIndeterminate="{Binding IsBusy}" />
             <TextBlock Text="{Binding Progress}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,4" />
         </StackPanel>
-        <TabControl x:Name="DataTabs" Grid.Row="3" Background="White" BorderBrush="{StaticResource LineBrush}">
+        <TabControl x:Name="DataTabs" Grid.Row="3" Background="White" BorderBrush="{StaticResource LineBrush}" IsEnabled="{Binding IsOperationalFormEnabled}">
             <TabItem Header="Data scope">
                 <Grid Margin="8" IsEnabled="{Binding IsNotBusy}">
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                     <WrapPanel Margin="0,0,0,8">
                         <TextBlock Text="Source company" VerticalAlignment="Center" Margin="0,0,6,0" />
-                        <TextBox Text="{Binding SourceCompany, UpdateSourceTrigger=PropertyChanged}" Width="95" Margin="0,0,16,0" />
+                        <ComboBox ItemsSource="{Binding SourceCompanies}" SelectedItem="{Binding SelectedSourceCompany}" DisplayMemberPath="DisplayText"
+                                  IsEditable="False" IsTextSearchEnabled="True" Width="200" Margin="0,0,16,0"
+                                  Visibility="{Binding SourceListMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBox Text="{Binding SourceCompany, UpdateSourceTrigger=PropertyChanged}" Width="115" Margin="0,0,16,0"
+                                 Visibility="{Binding ManualSourceCompany, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <TextBlock Text="Target company" VerticalAlignment="Center" Margin="0,0,6,0" />
-                        <TextBox Text="{Binding TargetCompany, UpdateSourceTrigger=PropertyChanged}" Width="95" Margin="0,0,16,0" />
+                        <ComboBox ItemsSource="{Binding TargetCompanies}" SelectedItem="{Binding SelectedTargetCompany}" DisplayMemberPath="DisplayText"
+                                  IsEditable="False" IsTextSearchEnabled="True" Width="200" Margin="0,0,16,0"
+                                  Visibility="{Binding TargetListMode, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBox Text="{Binding TargetCompany, UpdateSourceTrigger=PropertyChanged}" Width="115" Margin="0,0,16,0"
+                                 Visibility="{Binding ManualTargetCompany, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <RadioButton Content="Selected entities" GroupName="DataScope" IsChecked="{Binding SelectedMode}" VerticalAlignment="Center" Margin="0,0,16,0" />
                         <RadioButton Content="All eligible entities" GroupName="DataScope" IsChecked="{Binding AllEligible}" VerticalAlignment="Center" />
                     </WrapPanel>
@@ -99,8 +118,20 @@
                                     <TextBlock Text="Temporary disk (MiB)" VerticalAlignment="Center" /><TextBox Text="{Binding MaxDiskMegabytes, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" />
                                     <TextBlock Text="Entities / run" VerticalAlignment="Center" /><TextBox Text="{Binding MaxEntities, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" />
                                 </UniformGrid>
-                                <DataGrid Style="{StaticResource DataGridStyle}" Height="130" ItemsSource="{Binding SelectedPlan.SourceFields}" Margin="0,10,0,0">
-                                    <DataGrid.Columns><DataGridTextColumn Header="Available field" Binding="{Binding Name}" Width="170" /><DataGridTextColumn Header="EDM type" Binding="{Binding TypeFullName}" Width="200" /></DataGrid.Columns>
+                                <WrapPanel Margin="0,10,0,4">
+                                    <Button Content="Select All" Command="{Binding SelectedPlan.SelectAllFieldsCommand}" />
+                                    <Button Content="Clear Selected" Command="{Binding SelectedPlan.ClearSelectedFieldsCommand}" />
+                                </WrapPanel>
+                                <TextBlock Text="{Binding SelectedPlan.FieldSelectionSummary}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6" />
+                                <DataGrid Style="{StaticResource DataGridStyle}" Height="180" ItemsSource="{Binding SelectedPlan.AvailableFields}" IsReadOnly="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="Select" Width="65"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="Available field" Binding="{Binding Name, Mode=OneWay}" Width="170" IsReadOnly="True" />
+                                        <DataGridTextColumn Header="EDM type" Binding="{Binding TypeFullName, Mode=OneWay}" Width="160" IsReadOnly="True" />
+                                        <DataGridTextColumn Header="Required" Binding="{Binding Required, Mode=OneWay}" Width="110" IsReadOnly="True" />
+                                    </DataGrid.Columns>
                                 </DataGrid>
                             </StackPanel>
                         </ScrollViewer>
@@ -109,7 +140,7 @@
             </TabItem>
             <TabItem Header="Data results">
                 <Grid Margin="8">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" MinHeight="60" /><RowDefinition Height="Auto" /><RowDefinition Height="*" MinHeight="60" /><RowDefinition Height="*" MinHeight="60" /></Grid.RowDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                     <TextBlock Text="{Binding RunSummary}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,6" />
                     <WrapPanel Grid.Row="1" Margin="0,0,0,6" IsEnabled="{Binding IsNotBusy}">
                         <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" /><Button Content="Export JSON" Command="{Binding ExportJsonCommand}" />
@@ -124,11 +155,17 @@
                             <DataGridTextColumn Header="Inconclusive keys" Binding="{Binding Inconclusive}" Width="120" /><DataGridTextColumn Header="Message" Binding="{Binding Message}" Width="400" />
                         </DataGrid.Columns>
                     </DataGrid>
-                    <WrapPanel Grid.Row="3" Margin="0,6" IsEnabled="{Binding IsNotBusy}">
+                    <StackPanel Grid.Row="3">
+                        <Expander Header="Error diagnostics" Margin="0,6" IsExpanded="True">
+                            <TextBox Text="{Binding SelectedEntityResult.DiagnosticDetails, Mode=OneWay}" IsReadOnly="True"
+                                     TextWrapping="Wrap" MaxHeight="140" VerticalScrollBarVisibility="Auto" />
+                        </Expander>
+                    <WrapPanel Margin="0,6" IsEnabled="{Binding IsNotBusy}">
                         <ComboBox ItemsSource="{Binding RecordFilters}" SelectedItem="{Binding RecordFilter}" Width="150" Margin="0,0,8,0" />
                         <Button Content="Previous" Command="{Binding PreviousPageCommand}" /><Button Content="Next" Command="{Binding NextPageCommand}" />
                         <TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center" />
                     </WrapPanel>
+                    </StackPanel>
                     <DataGrid Grid.Row="4" Style="{StaticResource DataGridStyle}" ItemsSource="{Binding Records}" SelectedItem="{Binding SelectedRecord}">
                         <DataGrid.Columns><DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="130" /><DataGridTextColumn Header="Canonical key" Binding="{Binding Key}" Width="600" /><DataGridTextColumn Header="Changed fields" Binding="{Binding Differences.Count}" Width="110" /></DataGrid.Columns>
                     </DataGrid>

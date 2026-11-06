@@ -30,8 +30,8 @@ public sealed class JsonDataComparisonProfileRepository(string? directory = null
         if (!File.Exists(path)) return null;
         var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
         var profile = JsonSerializer.Deserialize<DataComparisonProfile>(ProtectedData.Unprotect(bytes, null, DataProtectionScope.CurrentUser));
-        if (profile is null || profile.Version != 1) throw new InvalidDataException("The data comparison profile is incompatible.");
-        return profile;
+        if (profile is null) throw new InvalidDataException("The data comparison profile is incompatible.");
+        return FieldSelectionPolicy.Migrate(profile, source);
     }
     private string GetPath(SchemaSnapshot source, SchemaSnapshot target)
     {

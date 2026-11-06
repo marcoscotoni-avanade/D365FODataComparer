@@ -102,6 +102,11 @@ public partial class App : System.Windows.Application
 						provider.GetRequiredService<RecordValueCanonicalizer>()));
 					services.AddSingleton<IDataRunStoreFactory, SqliteDataRunStoreFactory>();
 					services.AddSingleton<IDataComparisonRunner, DataComparisonRunner>();
+					services.AddSingleton<ILegalEntityProvider>(provider => new ODataLegalEntityProvider(
+						provider.GetRequiredService<IHttpClientFactory>().CreateClient("finops-data"),
+						provider.GetRequiredService<IAuthenticationService>(), provider.GetRequiredService<IFinOpsHostPolicy>(),
+						provider.GetRequiredService<MetadataWindowContext>()));
+					services.AddSingleton<IDataComparisonSetupProvider, DataComparisonSetupProvider>();
 					services.AddSingleton<IDataComparisonProfileRepository, JsonDataComparisonProfileRepository>();
 					services.AddSingleton<IDataComparisonInteraction, DataComparisonInteraction>();
 					services.AddSingleton<DataComparisonExporter>();

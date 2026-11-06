@@ -31,13 +31,27 @@ public partial class DataFilterViewModel(IReadOnlyList<FieldSchema> fields) : Ob
     }
 }
 
+public partial class AvailableFieldSelectionViewModel(FieldSchema field) : ObservableObject
+{
+    public FieldSchema Field { get; } = field;
+    public string Name => Field.Name;
+    public string TypeFullName => Field.TypeFullName;
+    [ObservableProperty] private bool isSelected;
+    [ObservableProperty] private string required = "";
+}
+
 public partial class EntityDataPlanViewModel : ObservableObject
 {
     private readonly SchemaSnapshot _source;
     private readonly SchemaSnapshot _target;
     private readonly EntityDataEligibilityService _eligibility;
+    private bool _changingFields;
     public string EntitySetName { get; }
     public IReadOnlyList<FieldSchema> SourceFields { get; }
+    public ObservableCollection<AvailableFieldSelectionViewModel> AvailableFields { get; } = [];
+    public string FieldSelectionSummary => AvailableFields.Any(item => item.IsSelected)
+        ? $"{AvailableFields.Count(item => item.IsSelected)} selected / {AvailableFields.Count}; exclusions apply, key/company required"
+        : $"All {AvailableFields.Count} fields downloaded; no $select. Exclusions apply to comparison only.";
     public IReadOnlyList<DataScopeKind> ScopeOptions { get; } = Enum.GetValues<DataScopeKind>();
     public IReadOnlyList<string> CompanyFields => SourceFields.Where(property => property.TypeFullName == "Edm.String").Select(property => property.Name).ToArray();
     public string DefaultKey { get; }
@@ -62,6 +76,16 @@ public partial class EntityDataPlanViewModel : ObservableObject
         var entity = source.Entities.SingleOrDefault(entity => entity.EntitySetName == name);
         SourceFields = entity?.Fields ?? [];
         DefaultKey = string.Join(", ", entity?.Key.Select(key => key.Name) ?? []);
+        foreach (var property in SourceFields)
+        {
+            var item = new AvailableFieldSelectionViewModel(property);
+            item.PropertyChanged += (_, args) =>
+            {
+                if (!_changingFields && args.PropertyName == nameof(AvailableFieldSelectionViewModel.IsSelected)) NotifyEligibility();
+            };
+            AvailableFields.Add(item);
+        }
+        RefreshRequiredFields();
         Filters.CollectionChanged += (_, args) =>
         {
             if (args.NewItems is not null) foreach (DataFilterViewModel item in args.NewItems) item.PropertyChanged += (_, _) => NotifyEligibility();
@@ -69,19 +93,46 @@ public partial class EntityDataPlanViewModel : ObservableObject
         };
     }
     public EntityDataPlan Build() => new(EntitySetName, Scope, Scope != DataScopeKind.Company || string.IsNullOrWhiteSpace(CompanyField) ? null : CompanyField,
-        Split(KeyFieldsText), Split(ExcludedFieldsText), Filters.Select(filter => filter.Build()).ToArray());
+        Split(KeyFieldsText), Split(ExcludedFieldsText), Filters.Select(filter => filter.Build()).ToArray(),
+        AvailableFields.Select(item => new AvailableFieldSelection(item.Field, item.IsSelected)).ToArray());
     public void Restore(EntityDataPlan plan)
     {
+        var saved = FieldSelectionPolicy.Resolve(plan, SourceFields);
+        if (saved.Select(item => item.Field.Name).Distinct(StringComparer.Ordinal).Count() != saved.Count
+            || saved.Any(item => !SourceFields.Any(property => property.Name == item.Field.Name && property.TypeFullName == item.Field.TypeFullName && property.IsCollection == item.Field.IsCollection)))
+            throw new InvalidOperationException("The saved available-field catalog does not match the current schema.");
         Scope = plan.Scope;
         CompanyField = plan.CompanyField ?? "";
         KeyFieldsText = string.Join(", ", plan.KeyFields);
         ExcludedFieldsText = string.Join(", ", plan.ExcludedFields);
         Filters.Clear();
         foreach (var filter in plan.Filters) { var item = new DataFilterViewModel(SourceFields); item.Restore(filter); Filters.Add(item); }
+        var checkedNames = saved.Where(item => item.IsSelected).Select(item => item.Field.Name).ToHashSet(StringComparer.Ordinal);
+        SetFieldSelection(name => checkedNames.Contains(name));
     }
     [RelayCommand] private void AddFilter() => Filters.Add(new DataFilterViewModel(SourceFields));
     [RelayCommand] private void RemoveFilter() { if (SelectedFilter is not null) Filters.Remove(SelectedFilter); }
-    public void NotifyEligibility() { OnPropertyChanged(nameof(Eligibility)); OnPropertyChanged(nameof(Warning)); }
+    [RelayCommand] private void SelectAllFields() => SetFieldSelection(_ => true);
+    [RelayCommand] private void ClearSelectedFields() => SetFieldSelection(_ => false);
+    private void SetFieldSelection(Func<string, bool> selected)
+    {
+        _changingFields = true;
+        try { foreach (var item in AvailableFields) item.IsSelected = selected(item.Name); }
+        finally { _changingFields = false; }
+        NotifyEligibility();
+    }
+    public void NotifyEligibility()
+    {
+        RefreshRequiredFields();
+        OnPropertyChanged(nameof(Eligibility)); OnPropertyChanged(nameof(Warning)); OnPropertyChanged(nameof(FieldSelectionSummary));
+    }
+    private void RefreshRequiredFields()
+    {
+        var keys = Split(string.IsNullOrWhiteSpace(KeyFieldsText) ? DefaultKey : KeyFieldsText).ToHashSet(StringComparer.Ordinal);
+        foreach (var item in AvailableFields)
+            item.Required = keys.Contains(item.Name) && Scope == DataScopeKind.Company && item.Name == CompanyField ? "Key / Company"
+                : keys.Contains(item.Name) ? "Key" : Scope == DataScopeKind.Company && item.Name == CompanyField ? "Company" : "";
+    }
     partial void OnScopeChanged(DataScopeKind value) => NotifyEligibility();
     partial void OnCompanyFieldChanged(string value) => NotifyEligibility();
     partial void OnKeyFieldsTextChanged(string value) => NotifyEligibility();

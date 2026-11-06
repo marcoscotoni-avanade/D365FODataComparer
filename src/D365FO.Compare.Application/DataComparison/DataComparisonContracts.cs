@@ -33,3 +33,10 @@ public interface IDataComparisonProfileRepository
 }
 public sealed class DataLimitException(string message) : IOException(message);
 public sealed class DataAuthorizationException(string message) : IOException(message);
+public sealed class DataReadDiagnosticException(DataFailureDiagnostic diagnostic, Exception innerException)
+    : IOException(diagnostic.Reason, innerException)
+{
+    public DataFailureDiagnostic Diagnostic { get; } = diagnostic;
+    public bool IsAuthorizationFailure => InnerException is DataAuthorizationException;
+    public bool IsLimitFailure => InnerException is DataLimitException;
+}

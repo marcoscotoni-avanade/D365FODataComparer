@@ -195,6 +195,7 @@ public sealed class MetadataWorkspaceTests
                         dataWorkspace.SelectedPlan!.Scope = D365FO.Compare.Domain.DataComparison.DataScopeKind.Company;
                         dataWorkspace.SelectedPlan.CompanyField = "Company";
                         dataWorkspace.SelectedPlan.IsSelected = true;
+                        dataWorkspace.LoadSetupCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                         dataWorkspace.StartCommand.ExecuteAsync(null).GetAwaiter().GetResult();
                         Assert.NotNull(dataWorkspace.Manifest);
                         var dataView = new DataComparisonWorkspaceView { DataContext = dataWorkspace };
@@ -209,6 +210,16 @@ public sealed class MetadataWorkspaceTests
                                 window.UpdateLayout();
                                 window.Dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
                                 window.UpdateLayout();
+                                if (tab == 0)
+                                {
+                                    var editor = VisualChildren<ScrollViewer>(dataView).First(viewer => viewer.Content is StackPanel);
+                                    editor.ScrollToEnd();
+                                    window.Dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
+                                    window.UpdateLayout();
+                                    var checkbox = VisualChildren<CheckBox>(dataView).First(box => box.DataContext is AvailableFieldSelectionViewModel item && item.Name == "Credit");
+                                    checkbox.IsChecked = true;
+                                    Assert.True(dataWorkspace.SelectedPlan!.AvailableFields.Single(item => item.Name == "Credit").IsSelected);
+                                }
                                 var image = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
                                 image.Render(window);
                                 var encoder = new PngBitmapEncoder();
@@ -218,6 +229,26 @@ public sealed class MetadataWorkspaceTests
                                 Assert.True(VisualChildren<DataGridRow>(dataView).Count() < 150);
                             }
                         }
+                        var failed = dataWorkspace.Manifest!.Entities[0] with
+                        {
+                            Status = D365FO.Compare.Domain.DataComparison.DataEntityStatus.Failed,
+                            Diagnostic = new("Source", "Validating nextLink", 1, "InvalidDataException", "Data paging changed the approved scope.",
+                                HttpStatus: 200, RequestId: "ec59282d-7160-4e51-a854-e7d837c778f8")
+                        };
+                        dataWorkspace.Manifest = dataWorkspace.Manifest with { Entities = [failed] };
+                        dataWorkspace.SelectedEntityResult = failed;
+                        dataTabs.SelectedIndex = 1;
+                        window.UpdateLayout();
+                        window.Dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
+                        window.UpdateLayout();
+                        Assert.Contains(VisualChildren<TextBox>(dataView), box => box.IsReadOnly && box.Text.Contains("HTTP status: 200", StringComparison.Ordinal)
+                            && box.Text.Contains("Stage: Validating nextLink", StringComparison.Ordinal));
+                        var diagnosticImage = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                        diagnosticImage.Render(window);
+                        var diagnosticEncoder = new PngBitmapEncoder();
+                        diagnosticEncoder.Frames.Add(BitmapFrame.Create(diagnosticImage));
+                        using var diagnosticFile = File.Create(Path.Combine(artifacts, "data-diagnostics-900.png"));
+                        diagnosticEncoder.Save(diagnosticFile);
                     }
                     finally { dataWorkspace.CloseAsync().GetAwaiter().GetResult(); }
                     listener.Flush();
