@@ -6,6 +6,7 @@ using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using D365FO.Compare.Application.Comparison;
+using D365FO.Compare.Application.DataComparison;
 using D365FO.Compare.Application.Metadata;
 using D365FO.Compare.Domain.Authentication;
 using D365FO.Compare.Domain.Configuration;
@@ -83,7 +84,8 @@ public partial class EntitySelectionItem(string name, bool inSource, bool inTarg
 public partial class MetadataWorkspaceViewModel(
     IEntityMetadataProvider provider,
     ISchemaSnapshotRepository repository,
-    SchemaComparisonService comparer) : ObservableObject
+    SchemaComparisonService comparer,
+    ActiveComparisonContext? comparisonContext = null) : ObservableObject
 {
     private CancellationTokenSource? _operation;
     private string? _accountId;
@@ -298,6 +300,7 @@ public partial class MetadataWorkspaceViewModel(
     private void OnSelectionChanged(object? sender, PropertyChangedEventArgs args) => OnPropertyChanged(nameof(SelectionCount));
     private void NotifyAvailability()
     {
+        comparisonContext?.Update(new(Source.Environment, Target.Environment, Source.Snapshot, Target.Snapshot, _canRefresh && !IsBusy && _accountId is not null));
         OnPropertyChanged(nameof(CanRefresh));
         OnPropertyChanged(nameof(CanCompare));
         OnPropertyChanged(nameof(CanValidateConnections));

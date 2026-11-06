@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Windows;
 using D365FO.Compare.Application.Authentication;
 using D365FO.Compare.Application.Comparison;
+using D365FO.Compare.Application.DataComparison;
 using D365FO.Compare.Application.Metadata;
 using D365FO.Compare.Application.Configuration;
 using D365FO.Compare.Application.EnvironmentDiscovery;
@@ -12,6 +13,8 @@ using D365FO.Compare.Infrastructure.Authentication;
 using D365FO.Compare.Infrastructure.FoHttp;
 using D365FO.Compare.Infrastructure.Metadata;
 using D365FO.Compare.Infrastructure.ODataEdm;
+using D365FO.Compare.Infrastructure.ODataData;
+using D365FO.Compare.Infrastructure.Export;
 using D365FO.Compare.Infrastructure.RestMetadata;
 using D365FO.Compare.Infrastructure.EnvironmentDiscovery;
 using D365FO.Compare.Infrastructure.Persistence;
@@ -84,6 +87,25 @@ public partial class App : System.Windows.Application
 					services.AddSingleton<ISchemaSnapshotRepository, JsonSchemaSnapshotRepository>();
 					services.AddSingleton<SchemaComparisonService>();
 					services.AddSingleton<MetadataWorkspaceViewModel>();
+					services.AddSingleton<ActiveComparisonContext>();
+					services.AddSingleton<EntityDataEligibilityService>();
+					services.AddSingleton<DataComparisonService>();
+					services.AddSingleton<RecordValueCanonicalizer>();
+					services.AddSingleton<ODataQueryBuilder>();
+					services.AddHttpClient("finops-data", client => client.Timeout = Timeout.InfiniteTimeSpan)
+						.RemoveAllLoggers()
+						.ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, ConnectTimeout = TimeSpan.FromSeconds(60) });
+					services.AddSingleton<IEntityDataReader>(provider => new ODataEntityDataReader(
+						provider.GetRequiredService<IHttpClientFactory>().CreateClient("finops-data"),
+						provider.GetRequiredService<IAuthenticationService>(), provider.GetRequiredService<IFinOpsHostPolicy>(),
+						provider.GetRequiredService<MetadataWindowContext>(), provider.GetRequiredService<ODataQueryBuilder>(),
+						provider.GetRequiredService<RecordValueCanonicalizer>()));
+					services.AddSingleton<IDataRunStoreFactory, SqliteDataRunStoreFactory>();
+					services.AddSingleton<IDataComparisonRunner, DataComparisonRunner>();
+					services.AddSingleton<IDataComparisonProfileRepository, JsonDataComparisonProfileRepository>();
+					services.AddSingleton<IDataComparisonInteraction, DataComparisonInteraction>();
+					services.AddSingleton<DataComparisonExporter>();
+					services.AddSingleton<DataComparisonWorkspaceViewModel>();
 					services.AddSingleton<IEnvironmentDiscoveryProvider>(provider => new PowerPlatformEnvironmentDiscoveryProvider(
 						provider.GetRequiredService<IHttpClientFactory>().CreateClient("power-platform"),
 						provider.GetRequiredService<IAuthenticationService>(),

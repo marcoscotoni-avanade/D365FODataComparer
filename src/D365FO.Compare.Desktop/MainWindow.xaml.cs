@@ -12,6 +12,8 @@ namespace D365FO.Compare.Desktop;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
+    private bool _closingRequested;
+    private bool _allowClose;
 
     public MainWindow(MainViewModel viewModel, MetadataWindowContext metadataWindowContext)
     {
@@ -34,10 +36,24 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnWindowClosing(object? sender, CancelEventArgs e)
+    private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
+        if (_allowClose) return;
+        e.Cancel = true;
+        if (_closingRequested) return;
+        _closingRequested = true;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-        _viewModel.Workspace.Reset();
         _viewModel.CancelOperationCommand.Execute(null);
+        try { await _viewModel.DataWorkspace.CloseAsync(); }
+        catch (Exception)
+        {
+            MessageBox.Show("Temporary encrypted data could not be fully cleaned up. Cleanup will be retried on the next data run.", "Data comparison", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _viewModel.Workspace.Reset();
+            _allowClose = true;
+            Close();
+        }
     }
 }

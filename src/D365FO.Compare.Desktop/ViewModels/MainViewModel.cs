@@ -40,7 +40,8 @@ public partial class MainViewModel : ObservableObject
         IConnectionValidationService connectionValidationService,
         IFinOpsHostPolicy finOpsHostPolicy,
         ILogger<MainViewModel> logger,
-        MetadataWorkspaceViewModel workspace)
+        MetadataWorkspaceViewModel workspace,
+        DataComparisonWorkspaceViewModel dataWorkspace)
     {
         _authenticationService = authenticationService;
         _discoveryProvider = discoveryProvider;
@@ -49,6 +50,13 @@ public partial class MainViewModel : ObservableObject
         _finOpsHostPolicy = finOpsHostPolicy;
         _logger = logger;
         Workspace = workspace;
+        DataWorkspace = dataWorkspace;
+        DataWorkspace.ConnectionValidationRequested += (_, _) =>
+        {
+            if (IsBusy || Workspace.IsBusy) return;
+            ActiveAreaIndex = 0;
+            CurrentStepIndex = 2;
+        };
         Workspace.ConnectionValidationRequested += (_, _) =>
         {
             if (IsBusy) return;
@@ -61,6 +69,7 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<DiscoveredEnvironment> DiscoveredEnvironments { get; } = [];
     public MetadataWorkspaceViewModel Workspace { get; }
+    public DataComparisonWorkspaceViewModel DataWorkspace { get; }
     [ObservableProperty]
     private int activeAreaIndex;
     public ICollectionView EnvironmentsView { get; }

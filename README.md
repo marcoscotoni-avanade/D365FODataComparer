@@ -1,8 +1,41 @@
 # D365FO Data Comparison Tool
 
-Windows WPF tool for signing in, configuring Source and Target Finance and Operations environments, reading their metadata, and comparing their published OData schemas.
+Windows WPF tool for configuring Source and Target Finance and Operations environments, comparing their published OData schemas, and comparing explicitly scoped business records.
 
-The environment discovery endpoint is Preview. Its response is isolated behind `IEnvironmentDiscoveryProvider`; the tenant POC must confirm environment coverage, `finOpsMetadata.url`, pagination, consent, and delegated access before the endpoint is relied on operationally. Business record extraction/comparison and FO writes are not part of this MVP.
+The environment discovery endpoint is Preview. Its response is isolated behind `IEnvironmentDiscoveryProvider`; the tenant POC must confirm environment coverage, `finOpsMetadata.url`, pagination, consent, and delegated access before the endpoint is relied on operationally. FO writes, actions, synchronization and automatic repair are not part of this MVP.
+
+## Data comparison workspace
+
+After saving validated connections and loading complete schemas for both environments, open **Data comparison**. No record request starts automatically.
+
+1. Enter Source and Target company codes. Check the entities to configure, then explicitly select `Company` or `Shared` scope for each. The bulk **Set Company** action uses the company field entered beside it; its initial `dataAreaId` text is only a candidate, not an inferred scope. **Set Shared** confirms that no company filter is required.
+2. Leave **Business key override** empty to use compatible ordered OData keys, or provide an explicit comma-separated business key. All key fields must exist on both sides and cannot be excluded. Technical identifiers such as RecId can differ between environments; review them. Duplicate keys anywhere in the downloaded scope produce `DuplicateKey`, never an arbitrary first-row match.
+3. Configure comma-separated field exclusions and optional typed filters. Unsupported collections/complex/spatial/binary fields or fields missing from one schema require explicit exclusion. String filters use literal text; numeric/boolean filters use JSON numeric/boolean values. Comparison is strict: no fuzzy matching, string trim/case folding or numeric tolerance.
+4. Choose **Selected entities** or **All eligible entities**. Review each entity's eligibility. Mass mode reports blocked/skipped names and does not claim complete coverage of the original catalog. Explicit selection can include blocked entities; those remain in the result with their blocking reason.
+5. Review the limits and press **Start data comparison**. Confirm company pair, entity count, limits and metadata capture times in the dialog before any business records are read. **Cancel** remains available. A job reads Source then Target, one entity at a time.
+6. In **Data results**, select an entity, filter the record status and page through results in batches of 100. Select a record for original and canonical values and value-state diagnostics. Export CSV/JSON only to an approved location; incomplete reports are explicitly marked. Equal records are excluded from export unless selected.
+
+### Data scope and correctness
+
+Company-scoped requests use an explicit company equality filter plus `cross-company=true`; they never rely on the user's default company. Different Source/Target companies are an explicit one-to-one mapping: their company field is normalized to `$company` for key/value matching, with original codes preserved in details. Returned records outside the configured company are rejected. Shared entities have no company filter. The tool does not discover company scope from field names.
+
+The default matching key must have the same ordered names on both sides; a business-key override must be explicit and is checked for missing/null/invalid values and duplicates. `Missing`, `Null`, empty string, false and zero remain distinct. Int64 and decimal values retain precision (decimal canonicalization uses coefficient/scale rather than double); string equality is ordinal. DateTimeOffset compares explicit instants in UTC, while unsupported temporal precision is rejected instead of silently truncated. Enum definitions must be compatible. Computed or volatile fields are not automatically excluded.
+
+Results are `Equal`, `Different`, `OnlySource`, `OnlyTarget`, `DuplicateKey`, `InvalidKey` or `Inconclusive`. Only two fully read datasets produce definitive missing-record classifications. A failed, canceled or limited entity is not published as conclusive data results. Inconclusive keys and skipped entities prevent the run from claiming complete equivalence. Equal means the chosen fields and authorized scope match, not that the databases are identical. Each entity records its capture interval; reads across two environments are not a single transaction and concurrent business changes can affect results. Zero rows cannot prove company validity or unrestricted access.
+
+### Data limits and protection
+
+Initial editable limits are 100,000 rows per side/entity, 1,000 pages per side/entity, 2,048 MiB temporary disk per job and 100 entities per run. Each HTTP page is additionally bounded to 32 MiB; server-driven pagination is followed without using `$top` to truncate datasets. The data client has no short HTTP timeout, uses the same FO audience, disables redirects and request logging, and limits retries to two for transient failures before the body is committed. HTTP 401/403 or identity changes stop the job. Next links must remain on the same HTTPS EntitySet, and automatic navigation expansion is forbidden.
+
+Data is buffered by page, then stored in a per-run SQLite database beneath `%LOCALAPPDATA%/D365FODataComparisonTool/DataRuns/Temp`. Record payloads and canonical keys use authenticated AES-GCM encryption with a per-run random key protected by DPAPI for the current Windows user; index keys use a separate random per-run HMAC secret. Neither records, keys nor query strings are written to application logs. Duplicate groups retain multiple rows. Matching and result pagination run off the UI thread, not in an in-memory copy of all records.
+
+**Clear data results**, a new run, account/environment/schema changes and app closure dispose the temporary store. Orphaned application-owned runs are cleaned on a subsequent data run without deleting another active instance's files. Secure forensic deletion on SSDs is not guaranteed. Profiles are separately DPAPI-protected beneath `DataProfiles`, bound to the account/environment/schema pair and contain configuration/filters, not downloaded records. A changed schema pair does not silently reuse the previous profile.
+
+Exports are explicit unencrypted files at the path you approve. CSV uses quoting and formula-injection protection; JSON preserves value states and originals. Both include the comparison scope, fingerprints, capture times, failures and completeness. Cancellation removes partial export files. Do not retain or share exported business data outside your organization's policy.
+
+### Data POC
+
+Authorization for connection checks or metadata is not authorization to read business records. Before a live data POC, have the environment owner approve the exact entities, fields, company pair, filters, record limits and export location. Start in sandbox with a small known dataset containing equal, changed and missing records. Validate permissions, business-key uniqueness and paging before increasing volume. PROD requires separate approval. Automated tests use synthetic records only; no real records are committed as fixtures.
 
 ## Metadata workspace
 

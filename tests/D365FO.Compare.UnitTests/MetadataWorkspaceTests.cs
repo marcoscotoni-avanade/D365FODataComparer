@@ -188,6 +188,38 @@ public sealed class MetadataWorkspaceTests
                             Assert.True(VisualChildren<DataGridRow>(view).Count() < 150);
                         }
                     }
+                    var dataWorkspace = DataComparisonWorkspaceTests.Create(DataComparisonWorkspaceTests.Context());
+                    try
+                    {
+                        dataWorkspace.SourceCompany = "IT"; dataWorkspace.TargetCompany = "US";
+                        dataWorkspace.SelectedPlan!.Scope = D365FO.Compare.Domain.DataComparison.DataScopeKind.Company;
+                        dataWorkspace.SelectedPlan.CompanyField = "Company";
+                        dataWorkspace.SelectedPlan.IsSelected = true;
+                        dataWorkspace.StartCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+                        Assert.NotNull(dataWorkspace.Manifest);
+                        var dataView = new DataComparisonWorkspaceView { DataContext = dataWorkspace };
+                        window.Content = dataView;
+                        var dataTabs = (TabControl)dataView.FindName("DataTabs");
+                        foreach (var width in new[] { 1120, 900 })
+                        {
+                            window.Width = width;
+                            foreach (var tab in new[] { 0, 1 })
+                            {
+                                dataTabs.SelectedIndex = tab;
+                                window.UpdateLayout();
+                                window.Dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
+                                window.UpdateLayout();
+                                var image = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                                image.Render(window);
+                                var encoder = new PngBitmapEncoder();
+                                encoder.Frames.Add(BitmapFrame.Create(image));
+                                using var file = File.Create(Path.Combine(artifacts, $"data-{width}-tab{tab}.png"));
+                                encoder.Save(file);
+                                Assert.True(VisualChildren<DataGridRow>(dataView).Count() < 150);
+                            }
+                        }
+                    }
+                    finally { dataWorkspace.CloseAsync().GetAwaiter().GetResult(); }
                     listener.Flush();
                     Assert.True(string.IsNullOrWhiteSpace(output.ToString()), output.ToString());
                 }

@@ -1,0 +1,148 @@
+<UserControl x:Class="D365FO.Compare.Desktop.Views.DataComparisonWorkspaceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <Style x:Key="DataGridStyle" TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False" /><Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="IsReadOnly" Value="True" /><Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" /><Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="EnableRowVirtualization" Value="True" /><Setter Property="EnableColumnVirtualization" Value="True" />
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" /><Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" /><Setter Property="RowHeight" Value="30" />
+            <Setter Property="SelectionMode" Value="Single" /><Setter Property="MinColumnWidth" Value="80" />
+        </Style>
+    </UserControl.Resources>
+    <Grid Margin="16,12">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <DockPanel Margin="0,0,0,8">
+            <TextBlock Text="{Binding ConnectionState}" DockPanel.Dock="Right" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding EnvironmentPair}" FontWeight="SemiBold" FontSize="16" TextWrapping="Wrap" />
+        </DockPanel>
+        <WrapPanel Grid.Row="1" Margin="0,0,0,8">
+            <Button Content="Validate connections" Command="{Binding ValidateConnectionsCommand}" IsEnabled="{Binding IsNotBusy}" />
+            <Button Content="Start data comparison" Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" Background="{StaticResource AccentBrush}" Foreground="White" />
+            <Button Content="Cancel" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
+            <Button Content="Save profile" Command="{Binding SaveProfileCommand}" IsEnabled="{Binding IsNotBusy}" />
+            <Button Content="Load profile" Command="{Binding LoadProfileCommand}" IsEnabled="{Binding IsNotBusy}" />
+            <Button Content="Clear data results" Command="{Binding ClearResultsCommand}" IsEnabled="{Binding IsNotBusy}" />
+        </WrapPanel>
+        <StackPanel Grid.Row="2" Margin="0,0,0,6">
+            <ProgressBar Height="3" IsIndeterminate="{Binding IsBusy}" />
+            <TextBlock Text="{Binding Progress}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,4" />
+        </StackPanel>
+        <TabControl x:Name="DataTabs" Grid.Row="3" Background="White" BorderBrush="{StaticResource LineBrush}">
+            <TabItem Header="Data scope">
+                <Grid Margin="8" IsEnabled="{Binding IsNotBusy}">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <WrapPanel Margin="0,0,0,8">
+                        <TextBlock Text="Source company" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBox Text="{Binding SourceCompany, UpdateSourceTrigger=PropertyChanged}" Width="95" Margin="0,0,16,0" />
+                        <TextBlock Text="Target company" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBox Text="{Binding TargetCompany, UpdateSourceTrigger=PropertyChanged}" Width="95" Margin="0,0,16,0" />
+                        <RadioButton Content="Selected entities" GroupName="DataScope" IsChecked="{Binding SelectedMode}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                        <RadioButton Content="All eligible entities" GroupName="DataScope" IsChecked="{Binding AllEligible}" VerticalAlignment="Center" />
+                    </WrapPanel>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="260" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" MinWidth="310" /></Grid.ColumnDefinitions>
+                        <Grid Margin="0,0,8,0">
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <TextBox Text="{Binding EntitySearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search EntitySet names" Margin="0,0,0,6" />
+                            <WrapPanel Grid.Row="1" Margin="0,0,0,6">
+                                <Button Content="Select filtered" Command="{Binding SelectFilteredCommand}" /><Button Content="Clear selection" Command="{Binding ClearSelectionCommand}" />
+                            </WrapPanel>
+                            <WrapPanel Grid.Row="2" Margin="0,0,0,6">
+                                <TextBox Text="{Binding BulkCompanyField, UpdateSourceTrigger=PropertyChanged}" Width="125" ToolTip="Company field for selected entities" Margin="0,0,6,0" />
+                                <Button Content="Set Company" Command="{Binding ApplyCompanyScopeCommand}" ToolTip="Confirm Company scope for checked entities" />
+                                <Button Content="Set Shared" Command="{Binding ApplySharedScopeCommand}" ToolTip="Confirm Shared scope for checked entities" />
+                            </WrapPanel>
+                            <DataGrid Grid.Row="3" Style="{StaticResource DataGridStyle}" IsReadOnly="False" ItemsSource="{Binding VisiblePlans}" SelectedItem="{Binding SelectedPlan}">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="Select" Width="65"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="EntitySet" Binding="{Binding EntitySetName, Mode=OneWay}" Width="200" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Scope" Binding="{Binding Scope, Mode=OneWay}" Width="110" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Eligibility" Binding="{Binding Eligibility, Mode=OneWay}" Width="400" IsReadOnly="True" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <TextBlock Grid.Row="4" Text="{Binding SelectionSummary}" Foreground="{StaticResource MutedBrush}" Margin="0,6" />
+                        </Grid>
+                        <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="{StaticResource LineBrush}" />
+                        <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="10,0,0,0">
+                            <StackPanel>
+                                <TextBlock Text="{Binding SelectedPlan.EntitySetName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding SelectedPlan.Eligibility}" Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap" Margin="0,6" />
+                                <TextBlock Text="Scope" /><ComboBox ItemsSource="{Binding SelectedPlan.ScopeOptions}" SelectedItem="{Binding SelectedPlan.Scope}" Margin="0,3,0,8" />
+                                <TextBlock Text="Company field" /><ComboBox ItemsSource="{Binding SelectedPlan.CompanyFields}" SelectedItem="{Binding SelectedPlan.CompanyField}" Margin="0,3,0,8" />
+                                <TextBlock Text="{Binding SelectedPlan.DefaultKey, StringFormat=OData key: {0}}" TextWrapping="Wrap" />
+                                <TextBlock Text="Business key override" /><TextBox Text="{Binding SelectedPlan.KeyFieldsText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Optional ordered field names separated by commas; empty uses compatible OData keys" Margin="0,3,0,8" />
+                                <TextBlock Text="{Binding SelectedPlan.Warning}" Foreground="#9B4D20" TextWrapping="Wrap" Margin="0,0,0,6" />
+                                <TextBlock Text="Excluded fields" /><TextBox Text="{Binding SelectedPlan.ExcludedFieldsText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Field names separated by commas; key fields cannot be excluded" Margin="0,3,0,8" />
+                                <WrapPanel Margin="0,0,0,6"><TextBlock Text="Filters" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                    <Button Content="Add" Command="{Binding SelectedPlan.AddFilterCommand}" /><Button Content="Remove" Command="{Binding SelectedPlan.RemoveFilterCommand}" />
+                                </WrapPanel>
+                                <DataGrid Style="{StaticResource DataGridStyle}" Height="130" ItemsSource="{Binding SelectedPlan.Filters}" SelectedItem="{Binding SelectedPlan.SelectedFilter}" IsReadOnly="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="Field" Width="130"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                            <ComboBox ItemsSource="{Binding FieldNames}" SelectedItem="{Binding FieldName, UpdateSourceTrigger=PropertyChanged}" />
+                                        </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Operator" Width="90"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                            <ComboBox ItemsSource="{Binding Operators}" SelectedItem="{Binding FilterOperator, UpdateSourceTrigger=PropertyChanged}" />
+                                        </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Width="150" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <TextBlock Text="Read limits" FontWeight="SemiBold" Margin="0,12,0,6" />
+                                <UniformGrid Columns="2">
+                                    <TextBlock Text="Rows / side / entity" VerticalAlignment="Center" /><TextBox Text="{Binding MaxRows, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" />
+                                    <TextBlock Text="Pages / side / entity" VerticalAlignment="Center" /><TextBox Text="{Binding MaxPages, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" />
+                                    <TextBlock Text="Temporary disk (MiB)" VerticalAlignment="Center" /><TextBox Text="{Binding MaxDiskMegabytes, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" />
+                                    <TextBlock Text="Entities / run" VerticalAlignment="Center" /><TextBox Text="{Binding MaxEntities, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" />
+                                </UniformGrid>
+                                <DataGrid Style="{StaticResource DataGridStyle}" Height="130" ItemsSource="{Binding SelectedPlan.SourceFields}" Margin="0,10,0,0">
+                                    <DataGrid.Columns><DataGridTextColumn Header="Available field" Binding="{Binding Name}" Width="170" /><DataGridTextColumn Header="EDM type" Binding="{Binding TypeFullName}" Width="200" /></DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Data results">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" MinHeight="60" /><RowDefinition Height="Auto" /><RowDefinition Height="*" MinHeight="60" /><RowDefinition Height="*" MinHeight="60" /></Grid.RowDefinitions>
+                    <TextBlock Text="{Binding RunSummary}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,6" />
+                    <WrapPanel Grid.Row="1" Margin="0,0,0,6" IsEnabled="{Binding IsNotBusy}">
+                        <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" /><Button Content="Export JSON" Command="{Binding ExportJsonCommand}" />
+                        <CheckBox Content="Include equal records" IsChecked="{Binding IncludeEqualInExport}" VerticalAlignment="Center" />
+                    </WrapPanel>
+                    <DataGrid Grid.Row="2" Style="{StaticResource DataGridStyle}" ItemsSource="{Binding Manifest.Entities}" SelectedItem="{Binding SelectedEntityResult}" IsEnabled="{Binding IsNotBusy}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="EntitySet" Binding="{Binding EntitySetName}" Width="190" /><DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="110" />
+                            <DataGridTextColumn Header="Source rows" Binding="{Binding SourceRows}" Width="95" /><DataGridTextColumn Header="Target rows" Binding="{Binding TargetRows}" Width="95" />
+                            <DataGridTextColumn Header="Equal" Binding="{Binding Equal}" Width="85" /><DataGridTextColumn Header="Different" Binding="{Binding Different}" Width="85" />
+                            <DataGridTextColumn Header="Only Source" Binding="{Binding OnlySource}" Width="95" /><DataGridTextColumn Header="Only Target" Binding="{Binding OnlyTarget}" Width="95" />
+                            <DataGridTextColumn Header="Inconclusive keys" Binding="{Binding Inconclusive}" Width="120" /><DataGridTextColumn Header="Message" Binding="{Binding Message}" Width="400" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <WrapPanel Grid.Row="3" Margin="0,6" IsEnabled="{Binding IsNotBusy}">
+                        <ComboBox ItemsSource="{Binding RecordFilters}" SelectedItem="{Binding RecordFilter}" Width="150" Margin="0,0,8,0" />
+                        <Button Content="Previous" Command="{Binding PreviousPageCommand}" /><Button Content="Next" Command="{Binding NextPageCommand}" />
+                        <TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center" />
+                    </WrapPanel>
+                    <DataGrid Grid.Row="4" Style="{StaticResource DataGridStyle}" ItemsSource="{Binding Records}" SelectedItem="{Binding SelectedRecord}">
+                        <DataGrid.Columns><DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="130" /><DataGridTextColumn Header="Canonical key" Binding="{Binding Key}" Width="600" /><DataGridTextColumn Header="Changed fields" Binding="{Binding Differences.Count}" Width="110" /></DataGrid.Columns>
+                    </DataGrid>
+                    <DataGrid Grid.Row="5" Style="{StaticResource DataGridStyle}" ItemsSource="{Binding SelectedFields}" Margin="0,6,0,0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Field" Binding="{Binding Field}" Width="150" /><DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="180" />
+                            <DataGridTextColumn Header="Target" Binding="{Binding Target}" Width="180" /><DataGridTextColumn Header="Source state" Binding="{Binding SourceState}" Width="110" />
+                            <DataGridTextColumn Header="Target state" Binding="{Binding TargetState}" Width="110" /><DataGridTextColumn Header="Source canonical" Binding="{Binding SourceCanonical}" Width="180" />
+                            <DataGridTextColumn Header="Target canonical" Binding="{Binding TargetCanonical}" Width="180" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+        <TextBlock Grid.Row="4" Text="{Binding Status}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0" />
+    </Grid>
+</UserControl>

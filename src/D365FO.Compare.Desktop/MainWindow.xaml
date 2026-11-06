@@ -23,13 +23,17 @@
                     <TextBlock Text="Environments &amp; schemas" Foreground="White" FontSize="25" FontWeight="SemiBold" Margin="0,4,0,0" />
                 </StackPanel>
                 <Border Grid.Column="1" Background="#284454" CornerRadius="3" Padding="12,7" VerticalAlignment="Center">
-                    <TextBlock Text="METADATA MVP" Foreground="White" FontSize="10" FontWeight="Bold" />
+                    <TextBlock Text="DATA MVP" Foreground="White" FontSize="10" FontWeight="Bold" />
                 </Border>
             </Grid>
         </Border>
 
         <TabControl Grid.Row="1" Grid.RowSpan="2" SelectedIndex="{Binding ActiveAreaIndex}" Margin="12,8">
-            <TabItem Header="Configuration" IsEnabled="{Binding Workspace.IsNotBusy}">
+            <TabItem Header="Configuration">
+                <TabItem.Style><Style TargetType="TabItem"><Style.Triggers>
+                    <DataTrigger Binding="{Binding Workspace.IsBusy}" Value="True"><Setter Property="IsEnabled" Value="False" /></DataTrigger>
+                    <DataTrigger Binding="{Binding DataWorkspace.IsBusy}" Value="True"><Setter Property="IsEnabled" Value="False" /></DataTrigger>
+                </Style.Triggers></Style></TabItem.Style>
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <TabControl Grid.Row="0" x:Name="WizardTabs" SelectedIndex="{Binding CurrentStepIndex}"
@@ -222,10 +226,13 @@
         </Border>
                 </Grid>
             </TabItem>
-            <TabItem Header="Metadata &amp; comparison">
+            <TabItem Header="Metadata &amp; comparison" IsEnabled="{Binding DataWorkspace.IsNotBusy}">
                 <Grid IsEnabled="{Binding IsNotBusy}">
                     <views:MetadataWorkspaceView DataContext="{Binding Workspace}" />
                 </Grid>
+            </TabItem>
+            <TabItem Header="Data comparison" IsEnabled="{Binding Workspace.IsNotBusy}">
+                <Grid IsEnabled="{Binding IsNotBusy}"><views:DataComparisonWorkspaceView DataContext="{Binding DataWorkspace}" /></Grid>
             </TabItem>
         </TabControl>
     </Grid>
