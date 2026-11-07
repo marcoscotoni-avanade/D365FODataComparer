@@ -86,6 +86,84 @@ public sealed class ODataEntityDataReaderTests
     }
 
     [Fact]
+    public void CountQueryUsesCompanyAndTypedFiltersWithoutComparisonEligibility()
+    {
+        var schema = SchemaComparisonTests.Snapshot();
+        var plan = DataComparisonTests.Plan with
+        {
+            Scope = DataScopeKind.Company,
+            CompanyField = "Company",
+            Filters = [new("Account", "eq", "\"A\"")]
+        };
+
+        var uri = new ODataQueryBuilder(new()).BuildCount(new Uri("https://source.example"), plan, schema, "IT");
+        var query = Uri.UnescapeDataString(uri.Query);
+
+        Assert.Equal("/data/Customers", uri.AbsolutePath);
+        Assert.Contains("$count=true", query);
+        Assert.Contains("$top=0", query);
+        Assert.Contains("cross-company=true", query);
+        Assert.Contains("Company eq 'IT'", query);
+        Assert.Contains("Account eq 'A'", query);
+        Assert.DoesNotContain("$select", query);
+    }
+
+    [Fact]
+    public async Task CountReaderSendsZeroTopQueryAndParsesODataCountAnnotation()
+    {
+        var plan = DataComparisonTests.Plan with
+        {
+            Scope = DataScopeKind.Company,
+            CompanyField = "Company",
+            Filters = [new("Account", "eq", "\"A\"")]
+        };
+        using var http = new HttpClient(new Handler(request =>
+        {
+            Assert.Equal("/data/Customers", request.RequestUri!.AbsolutePath);
+            var query = Uri.UnescapeDataString(request.RequestUri.Query);
+            Assert.Contains("$count=true", query);
+            Assert.Contains("$top=0", query);
+            Assert.Contains("Company eq 'IT'", query);
+            Assert.Contains("Account eq 'A'", query);
+            Assert.Equal("application/json", request.Headers.Accept.Single().MediaType);
+            return new(HttpStatusCode.OK) { Content = new StringContent("""{"@odata.count":42,"value":[]}""", System.Text.Encoding.UTF8, "application/json") };
+        }));
+
+        var result = await CreateCount(http).CountAsync(Environment, SchemaComparisonTests.Snapshot(), plan, "IT", "Source", default);
+
+        Assert.Equal(42, result.Count);
+        Assert.Null(result.Diagnostic);
+    }
+
+    [Fact]
+    public async Task CountReaderKeepsHttpFailureDistinctFromZero()
+    {
+        var calls = 0;
+        using var http = new HttpClient(new Handler(_ => { calls++; return new(HttpStatusCode.NotFound); }));
+        var result = await CreateCount(http).CountAsync(Environment, SchemaComparisonTests.Snapshot(), DataComparisonTests.Plan, "IT", "Target", default);
+
+        Assert.Null(result.Count);
+        Assert.Equal(404, result.Diagnostic!.HttpStatus);
+        Assert.Equal("Target", result.Diagnostic.Side);
+        Assert.Equal(1, calls);
+    }
+
+    [Theory]
+    [InlineData("{\"@odata.count\":-1,\"value\":[]}")]
+    [InlineData("{\"@odata.count\":\"42\",\"value\":[]}")]
+    [InlineData("{\"@odata.count\":42,\"value\":[{}]}")]
+    public async Task CountReaderRejectsInvalidCountPayload(string body)
+    {
+        using var http = new HttpClient(new Handler(_ => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+        }));
+        var result = await CreateCount(http).CountAsync(Environment, SchemaComparisonTests.Snapshot(), DataComparisonTests.Plan, "", "Source", default);
+        Assert.Null(result.Count);
+        Assert.NotNull(result.Diagnostic);
+    }
+
+    [Fact]
     public async Task HttpErrorDiagnosticsPreserveStatusRequestIdAndSafeServerMessage()
     {
         const string requestId = "ec59282d-7160-4e51-a854-e7d837c778f8";
@@ -170,6 +248,12 @@ public sealed class ODataEntityDataReaderTests
         hosts.Approve(Environment.FinOpsUrl);
         var values = new RecordValueCanonicalizer();
         return new(http, new Auth(), hosts, new MetadataWindowContext(), new ODataQueryBuilder(values), values);
+    }
+    private static ODataEntityCountReader CreateCount(HttpClient http)
+    {
+        var hosts = new ApprovedFinOpsHostPolicy();
+        hosts.Approve(Environment.FinOpsUrl);
+        return new(http, new Auth(), hosts, new MetadataWindowContext(), new ODataQueryBuilder(new RecordValueCanonicalizer()));
     }
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> response) : HttpMessageHandler
     {

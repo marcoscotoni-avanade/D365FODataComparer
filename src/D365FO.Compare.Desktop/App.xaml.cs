@@ -64,6 +64,8 @@ public partial class App : System.Windows.Application
 				{
 					services.AddSingleton<IAuthenticationService, MsalAuthenticationService>();
 					services.AddSingleton<IConfigurationRepository, JsonConfigurationRepository>();
+					services.AddSingleton<IGeneralPreferencesRepository, JsonGeneralPreferencesRepository>();
+					services.AddSingleton<GeneralParametersViewModel>();
 					services.AddSingleton<IFinOpsHostPolicy, ApprovedFinOpsHostPolicy>();
 					services.AddHttpClient("power-platform")
 						.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -100,6 +102,10 @@ public partial class App : System.Windows.Application
 						provider.GetRequiredService<IAuthenticationService>(), provider.GetRequiredService<IFinOpsHostPolicy>(),
 						provider.GetRequiredService<MetadataWindowContext>(), provider.GetRequiredService<ODataQueryBuilder>(),
 						provider.GetRequiredService<RecordValueCanonicalizer>()));
+					services.AddSingleton<IEntityCountReader>(provider => new ODataEntityCountReader(
+						provider.GetRequiredService<IHttpClientFactory>().CreateClient("finops-data"),
+						provider.GetRequiredService<IAuthenticationService>(), provider.GetRequiredService<IFinOpsHostPolicy>(),
+						provider.GetRequiredService<MetadataWindowContext>(), provider.GetRequiredService<ODataQueryBuilder>()));
 					services.AddSingleton<IDataRunStoreFactory, SqliteDataRunStoreFactory>();
 					services.AddSingleton<IDataComparisonRunner, DataComparisonRunner>();
 					services.AddSingleton<ILegalEntityProvider>(provider => new ODataLegalEntityProvider(

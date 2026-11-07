@@ -1,6 +1,9 @@
+using D365FO.Compare.Application.Configuration;
 using D365FO.Compare.Application.DataComparison;
 using D365FO.Compare.Desktop.ViewModels;
+using D365FO.Compare.Domain.Configuration;
 using D365FO.Compare.Domain.DataComparison;
+using D365FO.Compare.Domain.Environments;
 using D365FO.Compare.Domain.Metadata;
 using D365FO.Compare.Infrastructure.Export;
 using D365FO.Compare.Infrastructure.ODataData;
@@ -10,9 +13,10 @@ namespace D365FO.Compare.UnitTests;
 
 public sealed class DataComparisonWorkspaceTests
 {
-    internal static DataComparisonWorkspaceViewModel Create(ActiveComparisonContext context, Interaction? interaction = null, IDataComparisonSetupProvider? setups = null) => new(context, new(),
+    internal static DataComparisonWorkspaceViewModel Create(ActiveComparisonContext context, Interaction? interaction = null, IDataComparisonSetupProvider? setups = null,
+        IEntityCountReader? countReader = null, GeneralParametersViewModel? generalParameters = null) => new(context, new(),
         new DataComparisonRunner(new DataComparisonRunnerTests.SyntheticReader(), new(), new()), new SqliteDataRunStoreFactory(), new Profiles(),
-        interaction ?? new Interaction(), new DataComparisonExporter(), setups ?? new SetupProvider());
+        interaction ?? new Interaction(), new DataComparisonExporter(), setups ?? new SetupProvider(), countReader, generalParameters);
 
     internal static ActiveComparisonContext Context()
     {
@@ -79,6 +83,105 @@ public sealed class DataComparisonWorkspaceTests
         }
         finally { await workspace.CloseAsync(); }
     }
+    [Fact]
+    public async Task SelectedOnlyToggleFiltersEntityGridAndCombinesWithSearch()
+    {
+        var workspace = Create(Context());
+        try
+        {
+            var allPlans = workspace.VisiblePlans;
+            Assert.True(allPlans.Count > 1);
+            workspace.EntitySearch = "not-an-entity-name";
+            workspace.SelectAllCommand.Execute(null);
+            Assert.All(allPlans, plan => Assert.True(plan.IsSelected));
+            workspace.ClearSelectionCommand.Execute(null);
+            Assert.All(allPlans, plan => Assert.False(plan.IsSelected));
+            workspace.EntitySearch = "";
+
+            var selected = allPlans[0];
+            selected.IsSelected = true;
+
+            workspace.ToggleSelectedOnlyCommand.Execute(null);
+            Assert.Same(selected, Assert.Single(workspace.VisiblePlans));
+
+            var another = allPlans[1];
+            another.IsSelected = true;
+            Assert.Equal(2, workspace.VisiblePlans.Count);
+            another.IsSelected = false;
+            Assert.Same(selected, Assert.Single(workspace.VisiblePlans));
+
+            workspace.EntitySearch = "not-an-entity-name";
+            Assert.Empty(workspace.VisiblePlans);
+            workspace.EntitySearch = selected.EntitySetName;
+            Assert.Same(selected, Assert.Single(workspace.VisiblePlans));
+
+            workspace.EntitySearch = "";
+            workspace.ToggleSelectedOnlyCommand.Execute(null);
+            Assert.Equal(allPlans.Count, workspace.VisiblePlans.Count);
+            Assert.True(selected.IsSelected);
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task CountRowsIncludesFilteredOutEntitiesAndHonorsSavedConcurrency()
+    {
+        var reader = new CountingReader();
+        var preferences = new GeneralParametersViewModel(new TestPreferencesRepository(new GeneralPreferences(1)));
+        await preferences.InitializeAsync();
+        var workspace = Create(Context(), countReader: reader, generalParameters: preferences);
+        try
+        {
+            var allPlans = workspace.VisiblePlans;
+            Assert.True(allPlans.Count > 1);
+            Assert.False(workspace.CanCountRows);
+            await workspace.LoadSetupCommand.ExecuteAsync(null);
+            Assert.True(workspace.CanCountRows);
+            allPlans[0].IsSelected = true;
+            workspace.ShowSelectedOnly = true;
+            workspace.EntitySearch = "not-an-entity-name";
+            Assert.Empty(workspace.VisiblePlans);
+
+            await workspace.CountRowsCommand.ExecuteAsync(null);
+
+            Assert.Equal(allPlans.Count * 2, reader.Calls);
+            Assert.Equal(1, reader.MaximumConcurrency);
+            Assert.All(allPlans, plan =>
+            {
+                Assert.Equal("4", plan.SourceRows);
+                Assert.Equal("6", plan.TargetRows);
+            });
+            Assert.Contains("completed", workspace.Status, StringComparison.OrdinalIgnoreCase);
+            allPlans[0].Scope = DataScopeKind.Shared;
+            Assert.Equal("—", allPlans[0].SourceRows);
+            Assert.Equal("—", allPlans[0].TargetRows);
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task SetCompanyUsesActiveRowAndRejectsUnavailableCompanyField()
+    {
+        var workspace = Create(Context());
+        try
+        {
+            var plan = workspace.VisiblePlans.First(item => item.CompanyFields.Contains("Company", StringComparer.Ordinal));
+            workspace.SelectedPlan = plan;
+            workspace.BulkCompanyField = "Company";
+            workspace.ApplyCompanyScopeCommand.Execute(null);
+            Assert.Equal(DataScopeKind.Company, plan.Scope);
+            Assert.Equal("Company", plan.CompanyField);
+            Assert.Contains("applied to 1 entities", workspace.Status, StringComparison.OrdinalIgnoreCase);
+
+            plan.Scope = DataScopeKind.Shared;
+            workspace.BulkCompanyField = "NotACompanyField";
+            workspace.ApplyCompanyScopeCommand.Execute(null);
+            Assert.Equal(DataScopeKind.Shared, plan.Scope);
+            Assert.Contains("skipped", workspace.Status, StringComparison.OrdinalIgnoreCase);
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
     [Fact]
     public void FieldCheckboxCommandsAndRestoreKeepFullModeAndRequiredFields()
     {
@@ -205,6 +308,35 @@ public sealed class DataComparisonWorkspaceTests
     private sealed class FixedSetup(DataComparisonSetupSnapshot result) : IDataComparisonSetupProvider
     {
         public Task<DataComparisonSetupSnapshot> LoadAsync(ComparisonContextState context, IProgress<DataReadProgress>? progress, CancellationToken cancellationToken) => Task.FromResult(result);
+    }
+    private sealed class TestPreferencesRepository(GeneralPreferences preferences) : IGeneralPreferencesRepository
+    {
+        public Task<GeneralPreferences> LoadAsync(CancellationToken cancellationToken) => Task.FromResult(preferences);
+        public Task SaveAsync(GeneralPreferences value, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+    private sealed class CountingReader : IEntityCountReader
+    {
+        private int _active;
+        private int _maximumConcurrency;
+        private int _calls;
+        public int Calls => Volatile.Read(ref _calls);
+        public int MaximumConcurrency => Volatile.Read(ref _maximumConcurrency);
+
+        public async Task<EntityCountReadResult> CountAsync(EnvironmentConnection environment, SchemaSnapshot schema, EntityDataPlan plan,
+            string company, string side, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _calls);
+            var active = Interlocked.Increment(ref _active);
+            int current;
+            while (active > (current = Volatile.Read(ref _maximumConcurrency))
+                && Interlocked.CompareExchange(ref _maximumConcurrency, active, current) != current) { }
+            try
+            {
+                await Task.Delay(20, cancellationToken);
+                return new(side == "Source" ? 4 : 6);
+            }
+            finally { Interlocked.Decrement(ref _active); }
+        }
     }
     private sealed class WaitingSetup : IDataComparisonSetupProvider
     {

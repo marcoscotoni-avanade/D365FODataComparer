@@ -10,6 +10,11 @@ public interface IEntityDataReader
         PreparedEntityPlan plan, string company, DataReadLimits limits, IProgress<DataReadProgress>? progress,
         string side, CancellationToken cancellationToken);
 }
+public interface IEntityCountReader
+{
+    Task<EntityCountReadResult> CountAsync(EnvironmentConnection environment, SchemaSnapshot schema, EntityDataPlan plan,
+        string company, string side, CancellationToken cancellationToken);
+}
 public interface IDataRunStore : IAsyncDisposable
 {
     Task AddPageAsync(string entity, string side, IReadOnlyList<DataRecord> records, CancellationToken cancellationToken);

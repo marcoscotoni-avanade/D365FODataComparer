@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -46,14 +47,17 @@ public partial class EntityDataPlanViewModel : ObservableObject
     private readonly SchemaSnapshot _target;
     private readonly EntityDataEligibilityService _eligibility;
     private bool _changingFields;
+    private int _countQueryRevision;
     public string EntitySetName { get; }
+    public int CountQueryRevision => _countQueryRevision;
     public IReadOnlyList<FieldSchema> SourceFields { get; }
     public ObservableCollection<AvailableFieldSelectionViewModel> AvailableFields { get; } = [];
     public string FieldSelectionSummary => AvailableFields.Any(item => item.IsSelected)
         ? $"{AvailableFields.Count(item => item.IsSelected)} selected / {AvailableFields.Count}; exclusions apply, key/company required"
         : $"All {AvailableFields.Count} fields downloaded; no $select. Exclusions apply to comparison only.";
     public IReadOnlyList<DataScopeKind> ScopeOptions { get; } = Enum.GetValues<DataScopeKind>();
-    public IReadOnlyList<string> CompanyFields => SourceFields.Where(property => property.TypeFullName == "Edm.String").Select(property => property.Name).ToArray();
+    public IReadOnlyList<string> CompanyFields => SourceFields.Where(property => property.TypeFullName == "Edm.String" && !property.IsCollection)
+        .Select(property => property.Name).ToArray();
     public string DefaultKey { get; }
     public string Warning => (string.IsNullOrWhiteSpace(KeyFieldsText) ? DefaultKey : KeyFieldsText).Split(',', StringSplitOptions.TrimEntries).Any(name => name.Contains("RecId", StringComparison.OrdinalIgnoreCase))
         ? "Technical identifiers can differ between environments. Review the matching key." : "";
@@ -62,6 +66,10 @@ public partial class EntityDataPlanViewModel : ObservableObject
     [ObservableProperty] private string companyField = "";
     [ObservableProperty] private string keyFieldsText = "";
     [ObservableProperty] private string excludedFieldsText = "";
+    [ObservableProperty] private string sourceRows = "—";
+    [ObservableProperty] private string sourceRowsDetails = "Not counted.";
+    [ObservableProperty] private string targetRows = "—";
+    [ObservableProperty] private string targetRowsDetails = "Not counted.";
     [ObservableProperty] private DataFilterViewModel? selectedFilter;
     public ObservableCollection<DataFilterViewModel> Filters { get; } = [];
     public PreparedEntityPlan Prepared => _eligibility.Prepare(_source, _target, Build());
@@ -88,13 +96,41 @@ public partial class EntityDataPlanViewModel : ObservableObject
         RefreshRequiredFields();
         Filters.CollectionChanged += (_, args) =>
         {
-            if (args.NewItems is not null) foreach (DataFilterViewModel item in args.NewItems) item.PropertyChanged += (_, _) => NotifyEligibility();
+            if (args.NewItems is not null) foreach (DataFilterViewModel item in args.NewItems)
+                item.PropertyChanged += (_, _) => { NotifyCountQueryChanged(); NotifyEligibility(); };
+            NotifyCountQueryChanged();
             NotifyEligibility();
         };
     }
     public EntityDataPlan Build() => new(EntitySetName, Scope, Scope != DataScopeKind.Company || string.IsNullOrWhiteSpace(CompanyField) ? null : CompanyField,
         Split(KeyFieldsText), Split(ExcludedFieldsText), Filters.Select(filter => filter.Build()).ToArray(),
         AvailableFields.Select(item => new AvailableFieldSelection(item.Field, item.IsSelected)).ToArray());
+    public bool TrySetCompanyScope(string field)
+    {
+        if (!CompanyFields.Contains(field, StringComparer.Ordinal)) return false;
+        CompanyField = field;
+        Scope = DataScopeKind.Company;
+        return true;
+    }
+    public void SetRowsPending()
+    {
+        SourceRows = TargetRows = "Counting...";
+        SourceRowsDetails = TargetRowsDetails = "Count request in progress.";
+    }
+    public void SetSourceRows(EntityCountReadResult result) => SetRows(result, true);
+    public void SetTargetRows(EntityCountReadResult result) => SetRows(result, false);
+    public void ResetRows()
+    {
+        SourceRows = TargetRows = "—";
+        SourceRowsDetails = TargetRowsDetails = "Not counted.";
+    }
+    private void SetRows(EntityCountReadResult result, bool source)
+    {
+        var display = result.Count?.ToString("N0", CultureInfo.CurrentCulture) ?? (result.Diagnostic is null ? "N/A" : "Error");
+        var details = result.Diagnostic?.ToString() ?? result.Message ?? "Count completed.";
+        if (source) { SourceRows = display; SourceRowsDetails = details; }
+        else { TargetRows = display; TargetRowsDetails = details; }
+    }
     public void Restore(EntityDataPlan plan)
     {
         var saved = FieldSelectionPolicy.Resolve(plan, SourceFields);
@@ -126,6 +162,11 @@ public partial class EntityDataPlanViewModel : ObservableObject
         RefreshRequiredFields();
         OnPropertyChanged(nameof(Eligibility)); OnPropertyChanged(nameof(Warning)); OnPropertyChanged(nameof(FieldSelectionSummary));
     }
+    private void NotifyCountQueryChanged()
+    {
+        _countQueryRevision++;
+        OnPropertyChanged(nameof(CountQueryRevision));
+    }
     private void RefreshRequiredFields()
     {
         var keys = Split(string.IsNullOrWhiteSpace(KeyFieldsText) ? DefaultKey : KeyFieldsText).ToHashSet(StringComparer.Ordinal);
@@ -133,8 +174,8 @@ public partial class EntityDataPlanViewModel : ObservableObject
             item.Required = keys.Contains(item.Name) && Scope == DataScopeKind.Company && item.Name == CompanyField ? "Key / Company"
                 : keys.Contains(item.Name) ? "Key" : Scope == DataScopeKind.Company && item.Name == CompanyField ? "Company" : "";
     }
-    partial void OnScopeChanged(DataScopeKind value) => NotifyEligibility();
-    partial void OnCompanyFieldChanged(string value) => NotifyEligibility();
+    partial void OnScopeChanged(DataScopeKind value) { NotifyCountQueryChanged(); NotifyEligibility(); }
+    partial void OnCompanyFieldChanged(string value) { NotifyCountQueryChanged(); NotifyEligibility(); }
     partial void OnKeyFieldsTextChanged(string value) => NotifyEligibility();
     partial void OnExcludedFieldsTextChanged(string value) => NotifyEligibility();
     private static string[] Split(string text) => text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);

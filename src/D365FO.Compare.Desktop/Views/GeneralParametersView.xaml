@@ -1,0 +1,18 @@
+<UserControl x:Class="D365FO.Compare.Desktop.Views.GeneralParametersView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="28" MaxWidth="680" HorizontalAlignment="Left">
+            <TextBlock Text="General parameters" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+            <TextBlock Text="Maximum concurrent count requests" Margin="0,24,0,6" FontWeight="SemiBold" />
+            <TextBox x:Name="MaxConcurrentCountRequestsInput" Text="{Binding MaxConcurrentCountRequestsText, UpdateSourceTrigger=PropertyChanged}"
+                     Width="110" HorizontalAlignment="Left" ToolTip="Enter a whole number from 1 to 16." />
+            <TextBlock Text="Valid range: 1–16. Default: 2." Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0" />
+            <WrapPanel Margin="0,18,0,0">
+                <Button Content="Save" Command="{Binding SaveCommand}" />
+                <Button Content="Restore defaults" Command="{Binding RestoreDefaultsCommand}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,12,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -234,6 +234,9 @@
             <TabItem Header="Data comparison" IsEnabled="{Binding Workspace.IsNotBusy}">
                 <Grid IsEnabled="{Binding IsNotBusy}"><views:DataComparisonWorkspaceView DataContext="{Binding DataWorkspace}" /></Grid>
             </TabItem>
+            <TabItem Header="General parameters">
+                <views:GeneralParametersView DataContext="{Binding GeneralParameters}" />
+            </TabItem>
         </TabControl>
     </Grid>
 </Window>

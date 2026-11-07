@@ -31,6 +31,8 @@ public sealed record DataRecordResult(string Key, DataRecordStatus Status,
     IReadOnlyList<DataValueDifference> Differences, IReadOnlyDictionary<string, RecordValue>? Source,
     IReadOnlyDictionary<string, RecordValue>? Target);
 public sealed record DataReadProgress(string Entity, string Side, string Stage, long Rows = 0, int Pages = 0, long Bytes = 0);
+public sealed record EntityCountProgress(string Entity, string Side, int Completed, int Total);
+public sealed record EntityCountReadResult(long? Count, DataFailureDiagnostic? Diagnostic = null, string? Message = null);
 public sealed record DataFailureDiagnostic(string Side, string Stage, int? Page, string ExceptionType, string Reason,
     int? HttpStatus = null, string? RequestId = null, string? ServerErrorCode = null, string? JsonPath = null,
     long? LineNumber = null, long? BytePosition = null, string? InnerExceptionType = null)

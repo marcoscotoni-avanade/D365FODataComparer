@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using D365FO.Compare.Application.Configuration;
 using D365FO.Compare.Application.Comparison;
 using D365FO.Compare.Application.Metadata;
 using D365FO.Compare.Desktop.ViewModels;
@@ -251,6 +252,27 @@ public sealed class MetadataWorkspaceTests
                         diagnosticEncoder.Save(diagnosticFile);
                     }
                     finally { dataWorkspace.CloseAsync().GetAwaiter().GetResult(); }
+                    var generalParameters = new GeneralParametersViewModel(new GeneralPreferencesRepository());
+                    generalParameters.InitializeAsync().GetAwaiter().GetResult();
+                    var generalView = new GeneralParametersView { DataContext = generalParameters };
+                    window.Content = generalView;
+                    foreach (var width in new[] { 1120, 900 })
+                    {
+                        window.Width = width;
+                        window.UpdateLayout();
+                        window.Dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
+                        window.UpdateLayout();
+                        Assert.Equal("2", ((TextBox)generalView.FindName("MaxConcurrentCountRequestsInput")).Text);
+                        var generalImage = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                        generalImage.Render(window);
+                        var generalPixels = new byte[generalImage.PixelWidth * generalImage.PixelHeight * 4];
+                        generalImage.CopyPixels(generalPixels, generalImage.PixelWidth * 4, 0);
+                        Assert.True(generalPixels.Where((_, index) => index % 4 == 0).Distinct().Count() > 5);
+                        var generalEncoder = new PngBitmapEncoder();
+                        generalEncoder.Frames.Add(BitmapFrame.Create(generalImage));
+                        using var generalFile = File.Create(Path.Combine(artifacts, $"general-parameters-{width}.png"));
+                        generalEncoder.Save(generalFile);
+                    }
                     listener.Flush();
                     Assert.True(string.IsNullOrWhiteSpace(output.ToString()), output.ToString());
                 }
@@ -303,5 +325,10 @@ public sealed class MetadataWorkspaceTests
         }
         public Task SaveAsync(SchemaSnapshot snapshot, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task DeleteAsync(EnvironmentConnection environment, string accountId, CancellationToken cancellationToken) { Deleted++; return Task.CompletedTask; }
+    }
+    private sealed class GeneralPreferencesRepository : IGeneralPreferencesRepository
+    {
+        public Task<GeneralPreferences> LoadAsync(CancellationToken cancellationToken) => Task.FromResult(GeneralPreferences.Default);
+        public Task SaveAsync(GeneralPreferences preferences, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

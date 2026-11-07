@@ -20,6 +20,7 @@
         </DockPanel>
         <WrapPanel Grid.Row="1" Margin="0,0,0,8">
             <Button Content="Load setup" Command="{Binding LoadSetupCommand}" IsEnabled="{Binding CanLoadSetup}" Background="{StaticResource AccentBrush}" Foreground="White" />
+            <Button Content="Count rows" Command="{Binding CountRowsCommand}" IsEnabled="{Binding CanCountRows}" />
             <Button Content="Validate connections" Command="{Binding ValidateConnectionsCommand}" IsEnabled="{Binding IsNotBusy}" />
             <Button Content="Start data comparison" Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" Background="{StaticResource AccentBrush}" Foreground="White" />
             <Button Content="Cancel" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
@@ -62,26 +63,40 @@
                         <RadioButton Content="All eligible entities" GroupName="DataScope" IsChecked="{Binding AllEligible}" VerticalAlignment="Center" />
                     </WrapPanel>
                     <Grid Grid.Row="1">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="260" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" MinWidth="310" /></Grid.ColumnDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="1.2*" MinWidth="350" /><ColumnDefinition Width="6" /><ColumnDefinition Width="*" MinWidth="300" /></Grid.ColumnDefinitions>
                         <Grid Margin="0,0,8,0">
                             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                             <TextBox Text="{Binding EntitySearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search EntitySet names" Margin="0,0,0,6" />
                             <WrapPanel Grid.Row="1" Margin="0,0,0,6">
-                                <Button Content="Select filtered" Command="{Binding SelectFilteredCommand}" /><Button Content="Clear selection" Command="{Binding ClearSelectionCommand}" />
+                                <ToggleButton Content="Selected only" IsChecked="{Binding ShowSelectedOnly, Mode=TwoWay}" Padding="12,9" Margin="0,0,10,0"
+                                              Background="White" Foreground="{StaticResource InkBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Cursor="Hand" />
+                                <Button Content="Select All" Command="{Binding SelectAllCommand}" /><Button Content="Clear selection" Command="{Binding ClearSelectionCommand}" />
                             </WrapPanel>
                             <WrapPanel Grid.Row="2" Margin="0,0,0,6">
                                 <TextBox Text="{Binding BulkCompanyField, UpdateSourceTrigger=PropertyChanged}" Width="125" ToolTip="Company field for selected entities" Margin="0,0,6,0" />
-                                <Button Content="Set Company" Command="{Binding ApplyCompanyScopeCommand}" ToolTip="Confirm Company scope for checked entities" />
-                                <Button Content="Set Shared" Command="{Binding ApplySharedScopeCommand}" ToolTip="Confirm Shared scope for checked entities" />
+                                <Button Content="Set Company" Command="{Binding ApplyCompanyScopeCommand}"
+                                    ToolTip="Apply Company scope to checked entities, or the active row if none are checked. Non-string or missing fields are skipped." />
+                                <Button Content="Set Shared" Command="{Binding ApplySharedScopeCommand}"
+                                    ToolTip="Apply Shared scope to checked entities, or the active row if none are checked." />
                             </WrapPanel>
-                            <DataGrid Grid.Row="3" Style="{StaticResource DataGridStyle}" IsReadOnly="False" ItemsSource="{Binding VisiblePlans}" SelectedItem="{Binding SelectedPlan}">
+                            <DataGrid Grid.Row="3" Style="{StaticResource DataGridStyle}" MinColumnWidth="48" IsReadOnly="False" ItemsSource="{Binding VisiblePlans}" SelectedItem="{Binding SelectedPlan}">
                                 <DataGrid.Columns>
-                                    <DataGridTemplateColumn Header="Select" Width="65"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                    <DataGridTemplateColumn Header="Select" Width="48"><DataGridTemplateColumn.CellTemplate><DataTemplate>
                                         <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="EntitySet" Binding="{Binding EntitySetName, Mode=OneWay}" Width="200" IsReadOnly="True" />
-                                    <DataGridTextColumn Header="Scope" Binding="{Binding Scope, Mode=OneWay}" Width="110" IsReadOnly="True" />
-                                    <DataGridTextColumn Header="Eligibility" Binding="{Binding Eligibility, Mode=OneWay}" Width="400" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="EntitySet" Binding="{Binding EntitySetName, Mode=OneWay}" Width="*" IsReadOnly="True">
+                                        <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="TextTrimming" Value="CharacterEllipsis" /><Setter Property="ToolTip" Value="{Binding EntitySetName}" /></Style></DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <DataGridTemplateColumn Header="Source Rows" Width="78"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                        <TextBlock Text="{Binding SourceRows}" ToolTip="{Binding SourceRowsDetails}" />
+                                    </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Target Rows" Width="78"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                        <TextBlock Text="{Binding TargetRows}" ToolTip="{Binding TargetRowsDetails}" />
+                                    </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Scope" Binding="{Binding Scope, Mode=OneWay}" Width="70" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Eligibility" Binding="{Binding Eligibility, Mode=OneWay}" Width="90" IsReadOnly="True">
+                                        <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="TextTrimming" Value="CharacterEllipsis" /><Setter Property="ToolTip" Value="{Binding Eligibility}" /></Style></DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                             <TextBlock Grid.Row="4" Text="{Binding SelectionSummary}" Foreground="{StaticResource MutedBrush}" Margin="0,6" />

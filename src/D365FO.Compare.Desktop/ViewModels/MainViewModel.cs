@@ -41,7 +41,8 @@ public partial class MainViewModel : ObservableObject
         IFinOpsHostPolicy finOpsHostPolicy,
         ILogger<MainViewModel> logger,
         MetadataWorkspaceViewModel workspace,
-        DataComparisonWorkspaceViewModel dataWorkspace)
+        DataComparisonWorkspaceViewModel dataWorkspace,
+        GeneralParametersViewModel generalParameters)
     {
         _authenticationService = authenticationService;
         _discoveryProvider = discoveryProvider;
@@ -51,6 +52,7 @@ public partial class MainViewModel : ObservableObject
         _logger = logger;
         Workspace = workspace;
         DataWorkspace = dataWorkspace;
+        GeneralParameters = generalParameters;
         DataWorkspace.ConnectionValidationRequested += (_, _) =>
         {
             if (IsBusy || Workspace.IsBusy) return;
@@ -70,6 +72,7 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<DiscoveredEnvironment> DiscoveredEnvironments { get; } = [];
     public MetadataWorkspaceViewModel Workspace { get; }
     public DataComparisonWorkspaceViewModel DataWorkspace { get; }
+    public GeneralParametersViewModel GeneralParameters { get; }
     [ObservableProperty]
     private int activeAreaIndex;
     public ICollectionView EnvironmentsView { get; }
@@ -163,6 +166,7 @@ public partial class MainViewModel : ObservableObject
 
     public async Task InitializeAsync()
     {
+        await GeneralParameters.InitializeAsync();
         try
         {
             _loadedConfiguration = await _configurationRepository.LoadAsync(CancellationToken.None);
