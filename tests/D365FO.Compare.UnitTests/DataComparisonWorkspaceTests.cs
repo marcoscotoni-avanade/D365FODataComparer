@@ -309,14 +309,17 @@ public sealed class DataComparisonWorkspaceTests
             Assert.Empty(workspace.VisiblePlans);
 
             var visiblePlansNotifications = 0;
+            var canStartNotifications = 0;
             workspace.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(workspace.VisiblePlans)) visiblePlansNotifications++;
+                if (args.PropertyName == nameof(workspace.CanStart)) canStartNotifications++;
             };
 
             workspace.ClearRowCountsCommand.Execute(null);
 
             Assert.Equal(1, visiblePlansNotifications);
+            Assert.Equal(0, canStartNotifications);
             Assert.Equal(plans.Count, workspace.VisiblePlans.Count);
             Assert.All(plans, plan =>
             {

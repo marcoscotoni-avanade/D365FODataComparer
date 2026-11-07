@@ -220,7 +220,8 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
             OnPropertyChanged(nameof(CanForceEligibility));
             ForceEligibilityCommand.NotifyCanExecuteChanged();
         }
-        OnPropertyChanged(nameof(CanStart));
+        if (args.PropertyName is nameof(EntityDataPlanViewModel.IsSelected) or nameof(EntityDataPlanViewModel.Scope))
+            OnPropertyChanged(nameof(CanStart));
     }
     [RelayCommand] private void ValidateConnections() => ConnectionValidationRequested?.Invoke(this, EventArgs.Empty);
     [RelayCommand] private void ToggleSelectedOnly() => ShowSelectedOnly = !ShowSelectedOnly;
