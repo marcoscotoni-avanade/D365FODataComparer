@@ -25,14 +25,14 @@ public sealed class JsonGeneralPreferencesRepository : IGeneralPreferencesReposi
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         var preferences = await JsonSerializer.DeserializeAsync<GeneralPreferences>(stream, JsonOptions, cancellationToken)
             .ConfigureAwait(false) ?? throw new InvalidDataException("The general preferences file is empty.");
-        if (!preferences.IsValid) throw new InvalidDataException("The saved count concurrency must be between 1 and 8.");
+        if (!preferences.IsValid) throw new InvalidDataException("The saved general preferences are invalid.");
         return preferences;
     }
 
     public async Task SaveAsync(GeneralPreferences preferences, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(preferences);
-        if (!preferences.IsValid) throw new InvalidDataException("The count concurrency must be between 1 and 8.");
+        if (!preferences.IsValid) throw new InvalidDataException("The general preferences are invalid.");
 
         var directory = Path.GetDirectoryName(_preferencesPath)!;
         Directory.CreateDirectory(directory);

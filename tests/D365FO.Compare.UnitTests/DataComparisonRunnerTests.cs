@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text;
 using D365FO.Compare.Application.DataComparison;
 using D365FO.Compare.Domain.DataComparison;
 using D365FO.Compare.Domain.Environments;
@@ -73,14 +75,48 @@ public sealed class DataComparisonRunnerTests
     {
         var directory = Path.Combine(Path.GetTempPath(), "data-profile-tests-" + Guid.NewGuid().ToString("N"));
         var repository = new JsonDataComparisonProfileRepository(directory);
+        var path = Path.Combine(directory, "named-profile.profile");
         var request = Request with { Profile = Request.Profile with { AllEligible = true, SelectedEntities = ["Customers"] } };
         try
         {
-            await repository.SaveAsync(request, default);
-            var profile = await repository.LoadAsync(request.SourceSchema, request.TargetSchema, default);
+            await repository.SaveAsync(request, path, default);
+            var profile = await repository.LoadAsync(request.SourceSchema, request.TargetSchema, path, default);
             Assert.True(profile!.AllEligible);
             Assert.Equal("Customers", Assert.Single(profile.SelectedEntities!));
-            Assert.Null(await repository.LoadAsync(request.SourceSchema with { AccountId = "other" }, request.TargetSchema, default));
+            await Assert.ThrowsAsync<InvalidDataException>(() =>
+                repository.LoadAsync(request.SourceSchema with { AccountId = "other" }, request.TargetSchema, path, default));
+            var secondPath = Path.Combine(directory, "second-profile.profile");
+            var secondRequest = request with { Profile = request.Profile with { AllEligible = false } };
+            await repository.SaveAsync(secondRequest, secondPath, default);
+            Assert.False((await repository.LoadAsync(request.SourceSchema, request.TargetSchema, secondPath, default))!.AllEligible);
+            Assert.True((await repository.LoadAsync(request.SourceSchema, request.TargetSchema, path, default))!.AllEligible);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task OriginalIdentityNamedProfileFilesRemainLoadable()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "legacy-profile-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var request = Request;
+        var identity = JsonSerializer.Serialize(new[]
+        {
+            request.SourceSchema.TenantId, request.SourceSchema.AccountId, request.SourceSchema.EnvironmentId,
+            request.SourceSchema.EnvironmentOrigin, request.SourceSchema.Fingerprint, request.TargetSchema.AccountId,
+            request.TargetSchema.EnvironmentId, request.TargetSchema.EnvironmentOrigin, request.TargetSchema.Fingerprint
+        });
+        var path = Path.Combine(directory, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))) + ".profile");
+        try
+        {
+            var legacyProfile = request.Profile with { Version = 2 };
+            var protectedBytes = ProtectedData.Protect(JsonSerializer.SerializeToUtf8Bytes(legacyProfile), null, DataProtectionScope.CurrentUser);
+            await File.WriteAllBytesAsync(path, protectedBytes);
+
+            var loaded = await new JsonDataComparisonProfileRepository(directory)
+                .LoadAsync(request.SourceSchema, request.TargetSchema, path, default);
+
+            Assert.Equal(3, loaded!.Version);
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
@@ -89,14 +125,15 @@ public sealed class DataComparisonRunnerTests
     {
         var directory = Path.Combine(Path.GetTempPath(), "field-profile-tests-" + Guid.NewGuid().ToString("N"));
         var repository = new JsonDataComparisonProfileRepository(directory);
+        var path = Path.Combine(directory, "fields.profile");
         var fields = Request.SourceSchema.Entities.Single(entity => entity.EntitySetName == "Customers").Fields;
         var selections = fields.Select(property => new AvailableFieldSelection(property, false)).ToArray();
         var request = Request with { Profile = Request.Profile with { Entities = [DataComparisonTests.Plan with { AvailableFields = selections }] } };
         try
         {
-            await repository.SaveAsync(request, default);
-            var profile = await repository.LoadAsync(request.SourceSchema, request.TargetSchema, default);
-            Assert.Equal(2, profile!.Version);
+            await repository.SaveAsync(request, path, default);
+            var profile = await repository.LoadAsync(request.SourceSchema, request.TargetSchema, path, default);
+            Assert.Equal(3, profile!.Version);
             var catalog = Assert.Single(profile.Entities).AvailableFields!;
             Assert.Equal(fields.Count, catalog.Count);
             Assert.All(catalog, item => Assert.False(item.IsSelected));
@@ -106,17 +143,40 @@ public sealed class DataComparisonRunnerTests
             {
                 AvailableFields = selections.Select(item => item with { IsSelected = item.Field.Name == "Credit" }).ToArray()
             }] } };
-            await repository.SaveAsync(selected, default);
-            Assert.Equal("Credit", Assert.Single((await repository.LoadAsync(request.SourceSchema, request.TargetSchema, default))!.Entities[0].AvailableFields!, item => item.IsSelected).Field.Name);
+            await repository.SaveAsync(selected, path, default);
+            Assert.Equal("Credit", Assert.Single((await repository.LoadAsync(request.SourceSchema, request.TargetSchema, path, default))!.Entities[0].AvailableFields!, item => item.IsSelected).Field.Name);
 
             var legacy = request with { Profile = request.Profile with { Version = 1, Entities = [DataComparisonTests.Plan with { ExcludedFields = ["Credit"] }] } };
-            await repository.SaveAsync(legacy, default);
-            var migrated = await repository.LoadAsync(request.SourceSchema, request.TargetSchema, default);
-            Assert.Equal(2, migrated!.Version);
+            await repository.SaveAsync(legacy, path, default);
+            var migrated = await repository.LoadAsync(request.SourceSchema, request.TargetSchema, path, default);
+            Assert.Equal(3, migrated!.Version);
             Assert.False(migrated.Entities[0].AvailableFields!.Single(item => item.Field.Name == "Credit").IsSelected);
             Assert.True(migrated.Entities[0].AvailableFields!.Single(item => item.Field.Name == "Account").IsSelected);
-            await repository.SaveAsync(legacy with { Profile = legacy.Profile with { Entities = [DataComparisonTests.Plan] } }, default);
-            Assert.All((await repository.LoadAsync(request.SourceSchema, request.TargetSchema, default))!.Entities[0].AvailableFields!, item => Assert.False(item.IsSelected));
+            await repository.SaveAsync(legacy with { Profile = legacy.Profile with { Entities = [DataComparisonTests.Plan] } }, path, default);
+            Assert.All((await repository.LoadAsync(request.SourceSchema, request.TargetSchema, path, default))!.Entities[0].AvailableFields!, item => Assert.False(item.IsSelected));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task ProfileRoundTripsCountSnapshotsAndTimestamp()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "profile-counts-" + Guid.NewGuid().ToString("N"));
+        var repository = new JsonDataComparisonProfileRepository(directory);
+        var path = Path.Combine(directory, "counts.profile");
+        var capturedAt = DateTimeOffset.UtcNow;
+        var snapshot = new EntityRowCountSnapshot("Customers", new(123), new(null,
+            new("Target", "Count rows", null, "IOException", "Count unavailable.")), capturedAt);
+        var request = Request with { Profile = Request.Profile with { RowCounts = [snapshot] } };
+        try
+        {
+            await repository.SaveAsync(request, path, default);
+            var loaded = await repository.LoadAsync(request.SourceSchema, request.TargetSchema, path, default);
+            var restored = Assert.Single(loaded!.RowCounts!);
+            Assert.Equal(123, restored.Source.Count);
+            Assert.Null(restored.Target.Count);
+            Assert.Equal("Count unavailable.", restored.Target.Diagnostic!.Reason);
+            Assert.Equal(capturedAt, restored.CapturedAtUtc);
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }

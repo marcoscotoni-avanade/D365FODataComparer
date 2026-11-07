@@ -69,6 +69,7 @@ public partial class EntityDataPlanViewModel : ObservableObject
     public string Warning => (string.IsNullOrWhiteSpace(KeyFieldsText) ? DefaultKey : KeyFieldsText).Split(',', StringSplitOptions.TrimEntries).Any(name => name.Contains("RecId", StringComparison.OrdinalIgnoreCase))
         ? "Technical identifiers can differ between environments. Review the matching key." : "";
     [ObservableProperty] private bool isSelected;
+    [ObservableProperty] private bool isExcluded;
     [ObservableProperty] private DataScopeKind scope;
     [ObservableProperty] private string companyField = "";
     [ObservableProperty] private string keyFieldsText = "";
@@ -77,10 +78,16 @@ public partial class EntityDataPlanViewModel : ObservableObject
     [ObservableProperty] private string sourceRowsDetails = "Not counted.";
     [ObservableProperty] private string targetRows = "—";
     [ObservableProperty] private string targetRowsDetails = "Not counted.";
+    [ObservableProperty] private bool sourceHasRowsOrUnknown = true;
+    [ObservableProperty] private bool targetHasRowsOrUnknown = true;
     [ObservableProperty] private DataFilterViewModel? selectedFilter;
+    private EntityCountReadResult? _sourceCountResult;
+    private EntityCountReadResult? _targetCountResult;
+    private DateTimeOffset? _rowCountsCapturedAtUtc;
     public ObservableCollection<DataFilterViewModel> Filters { get; } = [];
     public PreparedEntityPlan Prepared => _eligibility.Prepare(_source, _target, Build());
     public string Eligibility => Prepared.IsReady ? "Ready" : string.Join(" ", Prepared.Problems);
+    public bool HasRowsOrUnknown => SourceHasRowsOrUnknown || TargetHasRowsOrUnknown;
 
     public EntityDataPlanViewModel(string name, SchemaSnapshot source, SchemaSnapshot target, EntityDataEligibilityService eligibility)
     {
@@ -118,20 +125,49 @@ public partial class EntityDataPlanViewModel : ObservableObject
         Scope = DataScopeKind.Company;
         return true;
     }
-    public void SetSourceRows(EntityCountReadResult result) => SetRows(result, true);
-    public void SetTargetRows(EntityCountReadResult result) => SetRows(result, false);
+    public void SetSourceRows(EntityCountReadResult result, DateTimeOffset? capturedAtUtc = null) => SetRows(result, true, capturedAtUtc, false);
+    public void SetTargetRows(EntityCountReadResult result, DateTimeOffset? capturedAtUtc = null) => SetRows(result, false, capturedAtUtc, false);
+    public EntityRowCountSnapshot? CaptureRowCounts() => _sourceCountResult is not null && _targetCountResult is not null && _rowCountsCapturedAtUtc is { } capturedAt
+        ? new(EntitySetName, _sourceCountResult, _targetCountResult, capturedAt) : null;
+    public void RestoreRowCounts(EntityRowCountSnapshot? snapshot)
+    {
+        if (snapshot is null) { ResetRows(); return; }
+        SetRows(snapshot.Source, true, snapshot.CapturedAtUtc, true);
+        SetRows(snapshot.Target, false, snapshot.CapturedAtUtc, true);
+    }
     public void ResetRows()
     {
         SourceRows = TargetRows = "—";
         SourceRowsDetails = TargetRowsDetails = "Not counted.";
+        SourceHasRowsOrUnknown = TargetHasRowsOrUnknown = true;
+        _sourceCountResult = _targetCountResult = null;
+        _rowCountsCapturedAtUtc = null;
     }
-    private void SetRows(EntityCountReadResult result, bool source)
+    private void SetRows(EntityCountReadResult result, bool source, DateTimeOffset? capturedAtUtc, bool profileSnapshot)
     {
         var display = result.Count?.ToString("N0", CultureInfo.CurrentCulture) ?? (result.Diagnostic is null ? "N/A" : "Error");
         var details = result.Diagnostic?.ToString() ?? result.Message ?? "Count completed.";
-        if (source) { SourceRows = display; SourceRowsDetails = details; }
-        else { TargetRows = display; TargetRowsDetails = details; }
+        if (profileSnapshot && capturedAtUtc is { } savedAt)
+            details += $"\nSaved profile count snapshot: {savedAt.ToLocalTime():g}";
+        _rowCountsCapturedAtUtc = capturedAtUtc ?? DateTimeOffset.UtcNow;
+        var hasRowsOrUnknown = result.Count is null or > 0;
+        if (source)
+        {
+            _sourceCountResult = result;
+            SourceRows = display;
+            SourceRowsDetails = details;
+            SourceHasRowsOrUnknown = hasRowsOrUnknown;
+        }
+        else
+        {
+            _targetCountResult = result;
+            TargetRows = display;
+            TargetRowsDetails = details;
+            TargetHasRowsOrUnknown = hasRowsOrUnknown;
+        }
     }
+    partial void OnSourceHasRowsOrUnknownChanged(bool value) => OnPropertyChanged(nameof(HasRowsOrUnknown));
+    partial void OnTargetHasRowsOrUnknownChanged(bool value) => OnPropertyChanged(nameof(HasRowsOrUnknown));
     public bool ForceExcludeSchemaDifferences()
     {
         if (!HasMatchingODataKeys) return false;

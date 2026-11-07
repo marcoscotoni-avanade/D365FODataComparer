@@ -20,17 +20,39 @@ public sealed class GeneralParametersViewModelTests
         viewModel.MaxConcurrentCountRequestsText = (GeneralPreferences.MaxConcurrentCountRequestsLimit + 1).ToString();
         Assert.False(viewModel.CanSave);
         viewModel.MaxConcurrentCountRequestsText = "4";
+        viewModel.ExcludedEntitySetsText = "Customers\nOtherCustomers\ncustomers";
         Assert.True(viewModel.CanSave);
 
         await viewModel.SaveCommand.ExecuteAsync(null);
         Assert.Equal(4, viewModel.SavedMaxConcurrentCountRequests);
-        Assert.Equal(new GeneralPreferences(4), repository.Value);
+        Assert.Equal(4, repository.Value.MaxConcurrentCountRequests);
+        Assert.Equal(["Customers", "OtherCustomers"], repository.Value.ExcludedEntitySets);
+        Assert.Equal(["Customers", "OtherCustomers"], viewModel.SavedExcludedEntitySets);
         Assert.True(viewModel.CanRestoreDefaults);
 
         await viewModel.RestoreDefaultsCommand.ExecuteAsync(null);
         Assert.Equal(GeneralPreferences.Default, repository.Value);
         Assert.Equal("2", viewModel.MaxConcurrentCountRequestsText);
+        Assert.Empty(viewModel.SavedExcludedEntitySets);
         Assert.False(viewModel.CanRestoreDefaults);
+    }
+
+    [Fact]
+    public async Task ExcludeFlagImportImmediatelyPersistsUniqueNamesWithoutResettingUnsavedCount()
+    {
+        var repository = new PreferencesRepository(new GeneralPreferences(3) { ExcludedEntitySets = ["Existing"] });
+        var viewModel = new GeneralParametersViewModel(repository);
+        await viewModel.InitializeAsync();
+        viewModel.MaxConcurrentCountRequestsText = "4";
+
+        var saved = await viewModel.AddExcludedEntitySetsAsync(["existing", "Customers", "customers"]);
+
+        Assert.True(saved);
+        Assert.Equal(["Existing", "Customers"], viewModel.SavedExcludedEntitySets);
+        Assert.Equal(["Existing", "Customers"], repository.Value.ExcludedEntitySets);
+        Assert.Equal("4", viewModel.MaxConcurrentCountRequestsText);
+        Assert.Equal(3, repository.Value.MaxConcurrentCountRequests);
+        Assert.True(viewModel.CanSave);
     }
 
     [Fact]

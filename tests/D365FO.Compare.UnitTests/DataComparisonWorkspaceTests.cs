@@ -14,8 +14,8 @@ namespace D365FO.Compare.UnitTests;
 public sealed class DataComparisonWorkspaceTests
 {
     internal static DataComparisonWorkspaceViewModel Create(ActiveComparisonContext context, Interaction? interaction = null, IDataComparisonSetupProvider? setups = null,
-        IEntityCountReader? countReader = null, GeneralParametersViewModel? generalParameters = null) => new(context, new(),
-        new DataComparisonRunner(new DataComparisonRunnerTests.SyntheticReader(), new(), new()), new SqliteDataRunStoreFactory(), new Profiles(),
+        IEntityCountReader? countReader = null, GeneralParametersViewModel? generalParameters = null, Profiles? profiles = null) => new(context, new(),
+        new DataComparisonRunner(new DataComparisonRunnerTests.SyntheticReader(), new(), new()), new SqliteDataRunStoreFactory(), profiles ?? new Profiles(),
         interaction ?? new Interaction(), new DataComparisonExporter(), setups ?? new SetupProvider(), countReader, generalParameters);
 
     internal static ActiveComparisonContext Context()
@@ -124,6 +124,33 @@ public sealed class DataComparisonWorkspaceTests
     }
 
     [Fact]
+    public async Task BulkVisibleFlagsApplyOnlyToCurrentFilteredRowsAndRemainIndependent()
+    {
+        var workspace = Create(Context());
+        try
+        {
+            var plans = workspace.VisiblePlans;
+            Assert.True(plans.Count > 1);
+            var visible = plans.Single(plan => plan.EntitySetName == "OtherCustomers");
+            var hidden = plans.Single(plan => plan.EntitySetName == "Customers");
+            workspace.EntitySearch = visible.EntitySetName;
+
+            workspace.SelectVisibleCommand.Execute(null);
+
+            Assert.True(visible.IsSelected);
+            Assert.False(hidden.IsSelected);
+            Assert.False(visible.IsExcluded);
+
+            workspace.ExcludeVisibleCommand.Execute(null);
+
+            Assert.True(visible.IsExcluded);
+            Assert.False(hidden.IsExcluded);
+            Assert.True(visible.IsSelected);
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
     public async Task CountRowsIncludesFilteredOutEntitiesAndHonorsSavedConcurrency()
     {
         var reader = new CountingReader();
@@ -198,6 +225,140 @@ public sealed class DataComparisonWorkspaceTests
             Assert.Equal(4, reader.Calls);
             Assert.Equal("14", selected.SourceRows);
             Assert.Equal("16", selected.TargetRows);
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task SaveAndLoadProfilePreservesRowCountsAndUsesSelectedFilePath()
+    {
+        var profiles = new Profiles();
+        var interaction = new Interaction
+        {
+            SaveProfilePathResult = @"C:\profiles\team.profile",
+            LoadProfilePathResult = @"C:\profiles\team.profile"
+        };
+        var reader = new CountingReader();
+        var workspace = Create(Context(), interaction, countReader: reader, profiles: profiles);
+        try
+        {
+            await workspace.LoadSetupCommand.ExecuteAsync(null);
+            await workspace.CountRowsCommand.ExecuteAsync(null);
+            var originalCount = workspace.VisiblePlans[0].SourceRows;
+
+            await workspace.SaveProfileCommand.ExecuteAsync(null);
+
+            Assert.Equal(@"C:\profiles\team.profile", profiles.SavedPath);
+            Assert.NotEmpty(profiles.SavedProfile!.RowCounts!);
+            Assert.Contains("DataComparison_", interaction.SuggestedProfileFileName);
+            workspace.ClearRowCountsCommand.Execute(null);
+            Assert.Equal("—", workspace.VisiblePlans[0].SourceRows);
+
+            await workspace.LoadProfileCommand.ExecuteAsync(null);
+
+            Assert.Equal(@"C:\profiles\team.profile", profiles.LoadedPath);
+            Assert.Equal(originalCount, workspace.VisiblePlans[0].SourceRows);
+            Assert.Contains("Saved profile count snapshot", workspace.VisiblePlans[0].SourceRowsDetails);
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task NonzeroCountFilterIncludesUnknownAndErrorsButHidesTwoSuccessfulZeros()
+    {
+        var workspace = Create(Context());
+        try
+        {
+            var plans = workspace.VisiblePlans;
+            Assert.All(plans, plan => Assert.True(plan.HasRowsOrUnknown));
+            workspace.ShowNonzeroCountsOnly = true;
+            Assert.Equal(plans.Count, workspace.VisiblePlans.Count);
+
+            var zero = plans[0];
+            zero.SetSourceRows(new(0));
+            zero.SetTargetRows(new(0));
+            Assert.DoesNotContain(zero, workspace.VisiblePlans);
+
+            var sourceRows = plans[1];
+            sourceRows.SetSourceRows(new(1));
+            sourceRows.SetTargetRows(new(0));
+            Assert.Contains(sourceRows, workspace.VisiblePlans);
+
+            var failed = plans[1];
+            failed.SetSourceRows(new(null, new("Source", "Count rows", null, "IOException", "Count failed.")));
+            failed.SetTargetRows(new(0));
+            Assert.Contains(failed, workspace.VisiblePlans);
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task ClearRowCountsRefreshesFilteredEntityListOnlyOnce()
+    {
+        var workspace = Create(Context());
+        try
+        {
+            var plans = workspace.VisiblePlans;
+            Assert.True(plans.Count > 1);
+            foreach (var plan in plans)
+            {
+                plan.SetSourceRows(new(0));
+                plan.SetTargetRows(new(0));
+            }
+            workspace.ShowNonzeroCountsOnly = true;
+            Assert.Empty(workspace.VisiblePlans);
+
+            var visiblePlansNotifications = 0;
+            workspace.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(workspace.VisiblePlans)) visiblePlansNotifications++;
+            };
+
+            workspace.ClearRowCountsCommand.Execute(null);
+
+            Assert.Equal(1, visiblePlansNotifications);
+            Assert.Equal(plans.Count, workspace.VisiblePlans.Count);
+            Assert.All(plans, plan =>
+            {
+                Assert.Equal("—", plan.SourceRows);
+                Assert.Equal("—", plan.TargetRows);
+            });
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task ImportedGlobalExclusionsHideEntitiesAndOmitThemFromCountsAndComparison()
+    {
+        var preferences = new GeneralParametersViewModel(new TestPreferencesRepository(GeneralPreferences.Default));
+        await preferences.InitializeAsync();
+        var reader = new CountingReader();
+        var workspace = Create(Context(), countReader: reader, generalParameters: preferences);
+        try
+        {
+            await workspace.LoadSetupCommand.ExecuteAsync(null);
+            var excluded = workspace.VisiblePlans.Single(plan => plan.EntitySetName == "Customers");
+            excluded.IsExcluded = true;
+            var remainingNames = workspace.VisiblePlans.Where(plan => plan != excluded).Select(plan => plan.EntitySetName).ToArray();
+
+            await workspace.ImportExcludedEntitiesCommand.ExecuteAsync(null);
+
+            Assert.Contains("Customers", preferences.SavedExcludedEntitySets);
+            Assert.DoesNotContain(excluded, workspace.VisiblePlans);
+            Assert.False(excluded.IsExcluded);
+            Assert.DoesNotContain("Customers", workspace.VisiblePlans.Select(plan => plan.EntitySetName));
+
+            await workspace.CountRowsCommand.ExecuteAsync(null);
+            Assert.Equal(remainingNames.Length * 2, reader.Calls);
+            Assert.Equal("—", excluded.SourceRows);
+
+            foreach (var plan in workspace.VisiblePlans)
+            {
+                plan.Scope = DataScopeKind.Shared;
+                plan.IsSelected = true;
+            }
+            await workspace.StartCommand.ExecuteAsync(null);
+            Assert.DoesNotContain("Customers", workspace.Manifest!.Request.Profile.Entities.Select(plan => plan.EntitySetName));
         }
         finally { await workspace.CloseAsync(); }
     }
@@ -452,8 +613,13 @@ public sealed class DataComparisonWorkspaceTests
     {
         public bool Accepted { get; init; } = true;
         public int Confirmations { get; private set; }
+        public string? SaveProfilePathResult { get; init; }
+        public string? LoadProfilePathResult { get; init; }
+        public string? SuggestedProfileFileName { get; private set; }
         public bool Confirm(string message) { Confirmations++; return Accepted; }
         public string? ExportPath(bool json) => null;
+        public string? SaveProfilePath(string suggestedFileName) { SuggestedProfileFileName = suggestedFileName; return SaveProfilePathResult; }
+        public string? LoadProfilePath() => LoadProfilePathResult;
     }
     internal sealed class SetupProvider : IDataComparisonSetupProvider
     {
@@ -461,9 +627,21 @@ public sealed class DataComparisonWorkspaceTests
             new DataComparisonSetupSnapshot(new([new("IT", "Source Italy"), new("US", "Source USA")], true, DateTimeOffset.UtcNow),
                 new([new("US", "Target USA"), new("IT", "Target Italy")], true, DateTimeOffset.UtcNow)));
     }
-    private sealed class Profiles : IDataComparisonProfileRepository
+    internal sealed class Profiles : IDataComparisonProfileRepository
     {
-        public Task SaveAsync(DataComparisonRequest request, CancellationToken cancellationToken) => Task.CompletedTask;
-        public Task<DataComparisonProfile?> LoadAsync(SchemaSnapshot source, SchemaSnapshot target, CancellationToken cancellationToken) => Task.FromResult<DataComparisonProfile?>(null);
+        public string? SavedPath { get; private set; }
+        public string? LoadedPath { get; private set; }
+        public DataComparisonProfile? SavedProfile { get; private set; }
+        public Task SaveAsync(DataComparisonRequest request, string path, CancellationToken cancellationToken)
+        {
+            SavedPath = path;
+            SavedProfile = request.Profile;
+            return Task.CompletedTask;
+        }
+        public Task<DataComparisonProfile?> LoadAsync(SchemaSnapshot source, SchemaSnapshot target, string path, CancellationToken cancellationToken)
+        {
+            LoadedPath = path;
+            return Task.FromResult(SavedProfile);
+        }
     }
 }

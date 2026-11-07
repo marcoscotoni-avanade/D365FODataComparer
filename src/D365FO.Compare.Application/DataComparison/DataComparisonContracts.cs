@@ -33,8 +33,8 @@ public interface IDataComparisonRunner
 }
 public interface IDataComparisonProfileRepository
 {
-    Task SaveAsync(DataComparisonRequest request, CancellationToken cancellationToken);
-    Task<DataComparisonProfile?> LoadAsync(SchemaSnapshot source, SchemaSnapshot target, CancellationToken cancellationToken);
+    Task SaveAsync(DataComparisonRequest request, string path, CancellationToken cancellationToken);
+    Task<DataComparisonProfile?> LoadAsync(SchemaSnapshot source, SchemaSnapshot target, string path, CancellationToken cancellationToken);
 }
 public sealed class DataLimitException(string message) : IOException(message);
 public sealed class DataAuthorizationException(string message) : IOException(message);

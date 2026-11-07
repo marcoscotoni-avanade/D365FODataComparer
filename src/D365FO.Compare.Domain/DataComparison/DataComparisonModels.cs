@@ -15,10 +15,13 @@ public sealed record EntityDataPlan(string EntitySetName, DataScopeKind Scope, s
     IReadOnlyList<AvailableFieldSelection>? AvailableFields = null);
 public sealed record DataReadLimits(long MaxRows = 100000, int MaxPages = 1000, long MaxPageBytes = 33554432,
     long MaxSpoolBytes = 2147483648, int MaxEntities = 100);
+public sealed record EntityRowCountSnapshot(string EntitySetName, EntityCountReadResult Source, EntityCountReadResult Target,
+    DateTimeOffset CapturedAtUtc);
 public sealed record DataComparisonProfile(string SourceCompany, string TargetCompany, IReadOnlyList<EntityDataPlan> Entities,
-    DataReadLimits Limits, int Version = 2, IReadOnlyList<string>? SkippedEntities = null,
+    DataReadLimits Limits, int Version = 3, IReadOnlyList<string>? SkippedEntities = null,
     bool AllEligible = false, IReadOnlyList<string>? SelectedEntities = null,
-    bool SourceCompanyUnverified = false, bool TargetCompanyUnverified = false);
+    bool SourceCompanyUnverified = false, bool TargetCompanyUnverified = false,
+    IReadOnlyList<EntityRowCountSnapshot>? RowCounts = null);
 public sealed record DataComparisonRequest(EnvironmentConnection Source, EnvironmentConnection Target,
     SchemaSnapshot SourceSchema, SchemaSnapshot TargetSchema, DataComparisonProfile Profile);
 public sealed record PreparedEntityPlan(EntityDataPlan Plan, IReadOnlyList<FieldSchema> Fields, IReadOnlyList<string> Problems)

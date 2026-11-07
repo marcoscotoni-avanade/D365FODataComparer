@@ -72,7 +72,13 @@
                             <WrapPanel Grid.Row="1" Margin="0,0,0,6">
                                 <ToggleButton Content="Selected only" IsChecked="{Binding ShowSelectedOnly, Mode=TwoWay}" Padding="12,9" Margin="0,0,10,0"
                                               Background="White" Foreground="{StaticResource InkBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Cursor="Hand" />
-                                <Button Content="Select All" Command="{Binding SelectAllCommand}" /><Button Content="Clear selection" Command="{Binding ClearSelectionCommand}" />
+                                <ToggleButton Content="Nonzero rows / errors / unknown" IsChecked="{Binding ShowNonzeroCountsOnly, Mode=TwoWay}" Padding="12,9" Margin="0,0,10,0"
+                                              ToolTip="Show entities with rows on either side, count errors, or counts not yet calculated."
+                                              Background="White" Foreground="{StaticResource InkBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Cursor="Hand" />
+                                <Button Content="Select All" Command="{Binding SelectAllCommand}" />
+                                <Button Content="Select visible" Command="{Binding SelectVisibleCommand}" />
+                                <Button Content="Exclude visible" Command="{Binding ExcludeVisibleCommand}" />
+                                <Button Content="Clear selection" Command="{Binding ClearSelectionCommand}" />
                             </WrapPanel>
                             <WrapPanel Grid.Row="2" Margin="0,0,0,6">
                                 <TextBox Text="{Binding BulkCompanyField, UpdateSourceTrigger=PropertyChanged}" Width="125" ToolTip="Company field for selected entities" Margin="0,0,6,0" />
@@ -82,11 +88,16 @@
                                     ToolTip="Apply Shared scope to checked entities, or the active row if none are checked." />
                                 <Button Content="Force Eligibility" Command="{Binding ForceEligibilityCommand}" IsEnabled="{Binding CanForceEligibility}"
                                     ToolTip="Exclude fields missing on one side for every ineligible entity with matching OData key fields." />
+                                <Button Content="Add Exclude-flagged to global list" Command="{Binding ImportExcludedEntitiesCommand}" IsEnabled="{Binding CanImportExcludedEntities}"
+                                    ToolTip="Save all Exclude-flagged entity names to General parameters and remove them from Data Scope and operations." />
                             </WrapPanel>
                             <DataGrid Grid.Row="3" Style="{StaticResource DataGridStyle}" MinColumnWidth="48" IsReadOnly="False" ItemsSource="{Binding VisiblePlans}" SelectedItem="{Binding SelectedPlan}">
                                 <DataGrid.Columns>
                                     <DataGridTemplateColumn Header="Select" Width="48"><DataGridTemplateColumn.CellTemplate><DataTemplate>
                                         <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Exclude" Width="58"><DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsExcluded, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
                                     <DataGridTextColumn Header="EntitySet" Binding="{Binding EntitySetName, Mode=OneWay}" Width="*" IsReadOnly="True">
                                         <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="TextTrimming" Value="CharacterEllipsis" /><Setter Property="ToolTip" Value="{Binding EntitySetName}" /></Style></DataGridTextColumn.ElementStyle>

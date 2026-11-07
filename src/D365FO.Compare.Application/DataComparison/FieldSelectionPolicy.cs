@@ -16,12 +16,13 @@ public static class FieldSelectionPolicy
 
     public static DataComparisonProfile Migrate(DataComparisonProfile profile, SchemaSnapshot source)
     {
-        if (profile.Version is not (1 or 2)) throw new InvalidDataException("The data comparison profile is incompatible.");
-        if (profile.Version == 2) return profile;
+        if (profile.Version is not (1 or 2 or 3)) throw new InvalidDataException("The data comparison profile is incompatible.");
+        if (profile.Version == 3) return profile;
+        if (profile.Version == 2) return profile with { Version = 3 };
         var fieldsByEntity = source.Entities.ToDictionary(entity => entity.EntitySetName, entity => entity.Fields, StringComparer.Ordinal);
         return profile with
         {
-            Version = 2,
+            Version = 3,
             Entities = profile.Entities.Select(plan => plan with
             {
                 AvailableFields = Resolve(plan, fieldsByEntity.GetValueOrDefault(plan.EntitySetName) ?? [])
