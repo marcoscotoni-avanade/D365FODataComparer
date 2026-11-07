@@ -47,9 +47,7 @@ public partial class EntityDataPlanViewModel : ObservableObject
     private readonly SchemaSnapshot _target;
     private readonly EntityDataEligibilityService _eligibility;
     private bool _changingFields;
-    private int _countQueryRevision;
     public string EntitySetName { get; }
-    public int CountQueryRevision => _countQueryRevision;
     public IReadOnlyList<FieldSchema> SourceFields { get; }
     public ObservableCollection<AvailableFieldSelectionViewModel> AvailableFields { get; } = [];
     public string FieldSelectionSummary => AvailableFields.Any(item => item.IsSelected)
@@ -59,6 +57,15 @@ public partial class EntityDataPlanViewModel : ObservableObject
     public IReadOnlyList<string> CompanyFields => SourceFields.Where(property => property.TypeFullName == "Edm.String" && !property.IsCollection)
         .Select(property => property.Name).ToArray();
     public string DefaultKey { get; }
+    public bool HasMatchingODataKeys
+    {
+        get
+        {
+            var source = _source.Entities.SingleOrDefault(entity => entity.EntitySetName == EntitySetName);
+            var target = _target.Entities.SingleOrDefault(entity => entity.EntitySetName == EntitySetName);
+            return source is not null && target is not null && EntityDataEligibilityService.HaveMatchingODataKeys(source, target);
+        }
+    }
     public string Warning => (string.IsNullOrWhiteSpace(KeyFieldsText) ? DefaultKey : KeyFieldsText).Split(',', StringSplitOptions.TrimEntries).Any(name => name.Contains("RecId", StringComparison.OrdinalIgnoreCase))
         ? "Technical identifiers can differ between environments. Review the matching key." : "";
     [ObservableProperty] private bool isSelected;
@@ -97,8 +104,7 @@ public partial class EntityDataPlanViewModel : ObservableObject
         Filters.CollectionChanged += (_, args) =>
         {
             if (args.NewItems is not null) foreach (DataFilterViewModel item in args.NewItems)
-                item.PropertyChanged += (_, _) => { NotifyCountQueryChanged(); NotifyEligibility(); };
-            NotifyCountQueryChanged();
+                item.PropertyChanged += (_, _) => NotifyEligibility();
             NotifyEligibility();
         };
     }
@@ -111,11 +117,6 @@ public partial class EntityDataPlanViewModel : ObservableObject
         CompanyField = field;
         Scope = DataScopeKind.Company;
         return true;
-    }
-    public void SetRowsPending()
-    {
-        SourceRows = TargetRows = "Counting...";
-        SourceRowsDetails = TargetRowsDetails = "Count request in progress.";
     }
     public void SetSourceRows(EntityCountReadResult result) => SetRows(result, true);
     public void SetTargetRows(EntityCountReadResult result) => SetRows(result, false);
@@ -130,6 +131,22 @@ public partial class EntityDataPlanViewModel : ObservableObject
         var details = result.Diagnostic?.ToString() ?? result.Message ?? "Count completed.";
         if (source) { SourceRows = display; SourceRowsDetails = details; }
         else { TargetRows = display; TargetRowsDetails = details; }
+    }
+    public bool ForceExcludeSchemaDifferences()
+    {
+        if (!HasMatchingODataKeys) return false;
+        var source = _source.Entities.Single(entity => entity.EntitySetName == EntitySetName);
+        var target = _target.Entities.Single(entity => entity.EntitySetName == EntitySetName);
+        var sourceNames = source.Fields.Select(field => field.Name).ToHashSet(StringComparer.Ordinal);
+        var targetNames = target.Fields.Select(field => field.Name).ToHashSet(StringComparer.Ordinal);
+        var schemaDifferences = sourceNames.Except(targetNames, StringComparer.Ordinal)
+            .Concat(targetNames.Except(sourceNames, StringComparer.Ordinal)).Order(StringComparer.Ordinal).ToArray();
+        if (schemaDifferences.Length == 0) return false;
+        var existing = Split(ExcludedFieldsText);
+        var combined = existing.Concat(schemaDifferences).Distinct(StringComparer.Ordinal).ToArray();
+        if (combined.Length == existing.Length) return false;
+        ExcludedFieldsText = string.Join(", ", combined);
+        return true;
     }
     public void Restore(EntityDataPlan plan)
     {
@@ -162,11 +179,6 @@ public partial class EntityDataPlanViewModel : ObservableObject
         RefreshRequiredFields();
         OnPropertyChanged(nameof(Eligibility)); OnPropertyChanged(nameof(Warning)); OnPropertyChanged(nameof(FieldSelectionSummary));
     }
-    private void NotifyCountQueryChanged()
-    {
-        _countQueryRevision++;
-        OnPropertyChanged(nameof(CountQueryRevision));
-    }
     private void RefreshRequiredFields()
     {
         var keys = Split(string.IsNullOrWhiteSpace(KeyFieldsText) ? DefaultKey : KeyFieldsText).ToHashSet(StringComparer.Ordinal);
@@ -174,8 +186,8 @@ public partial class EntityDataPlanViewModel : ObservableObject
             item.Required = keys.Contains(item.Name) && Scope == DataScopeKind.Company && item.Name == CompanyField ? "Key / Company"
                 : keys.Contains(item.Name) ? "Key" : Scope == DataScopeKind.Company && item.Name == CompanyField ? "Company" : "";
     }
-    partial void OnScopeChanged(DataScopeKind value) { NotifyCountQueryChanged(); NotifyEligibility(); }
-    partial void OnCompanyFieldChanged(string value) { NotifyCountQueryChanged(); NotifyEligibility(); }
+    partial void OnScopeChanged(DataScopeKind value) => NotifyEligibility();
+    partial void OnCompanyFieldChanged(string value) => NotifyEligibility();
     partial void OnKeyFieldsTextChanged(string value) => NotifyEligibility();
     partial void OnExcludedFieldsTextChanged(string value) => NotifyEligibility();
     private static string[] Split(string text) => text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);

@@ -69,6 +69,8 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     public bool IsOperationalFormEnabled => IsSetupReady && !IsBusy;
     public bool CanLoadSetup => !IsBusy && _context.State.OnlineReady && _context.State.SourceSchema is not null && _context.State.TargetSchema is not null;
     public bool CanCountRows => IsOperationalFormEnabled && _context.State.OnlineReady && _plans.Count > 0 && _countReader is not null;
+    public bool CanCountSelectedRows => CanCountRows && _plans.Any(plan => plan.IsSelected);
+    public bool CanForceEligibility => !IsBusy && _plans.Any(plan => !plan.Prepared.IsReady);
     public bool CanStart => IsOperationalFormEnabled && _context.State.OnlineReady && _plans.Count > 0
         && (!_plans.Any(plan => plan.Scope == DataScopeKind.Company && (AllEligible || plan.IsSelected))
             || ((ManualSourceCompany ? !string.IsNullOrWhiteSpace(SourceCompany) : SelectedSourceCompany is not null)
@@ -160,8 +162,11 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
             }
         SelectedPlan = _plans.FirstOrDefault();
         OnPropertyChanged(nameof(VisiblePlans)); OnPropertyChanged(nameof(SelectionSummary));
-        OnPropertyChanged(nameof(CanStart)); OnPropertyChanged(nameof(CanCountRows)); OnPropertyChanged(nameof(ConnectionState)); OnPropertyChanged(nameof(EnvironmentPair));
+        OnPropertyChanged(nameof(CanStart)); OnPropertyChanged(nameof(CanCountRows)); OnPropertyChanged(nameof(CanCountSelectedRows));
+        OnPropertyChanged(nameof(CanForceEligibility)); OnPropertyChanged(nameof(ConnectionState)); OnPropertyChanged(nameof(EnvironmentPair));
         CountRowsCommand.NotifyCanExecuteChanged();
+        CountSelectedRowsCommand.NotifyCanExecuteChanged();
+        ForceEligibilityCommand.NotifyCanExecuteChanged();
     }
     private void OnPlanChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
@@ -169,9 +174,14 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
         {
             OnPropertyChanged(nameof(SelectionSummary));
             OnPropertyChanged(nameof(VisiblePlans));
+            OnPropertyChanged(nameof(CanCountSelectedRows));
+            CountSelectedRowsCommand.NotifyCanExecuteChanged();
         }
-        if (args.PropertyName == nameof(EntityDataPlanViewModel.CountQueryRevision) && sender is EntityDataPlanViewModel plan)
-            plan.ResetRows();
+        if (args.PropertyName == nameof(EntityDataPlanViewModel.Eligibility))
+        {
+            OnPropertyChanged(nameof(CanForceEligibility));
+            ForceEligibilityCommand.NotifyCanExecuteChanged();
+        }
         OnPropertyChanged(nameof(CanStart));
     }
     [RelayCommand] private void ValidateConnections() => ConnectionValidationRequested?.Invoke(this, EventArgs.Empty);
@@ -191,6 +201,15 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
         var targets = BulkTargets();
         foreach (var plan in targets) plan.Scope = DataScopeKind.Shared;
         Status = $"Shared scope applied to {targets.Length:N0} entities.";
+    }
+    [RelayCommand(CanExecute = nameof(CanForceEligibility))]
+    private void ForceEligibility()
+    {
+        var candidates = _plans.Where(plan => !plan.Prepared.IsReady).ToArray();
+        var blockedByKeys = candidates.Count(plan => !plan.HasMatchingODataKeys);
+        var updated = candidates.Count(plan => plan.ForceExcludeSchemaDifferences());
+        var remaining = _plans.Count(plan => !plan.Prepared.IsReady);
+        Status = $"Force Eligibility added exclusions to {updated:N0} entities; {blockedByKeys:N0} skipped because OData key fields differ or are missing; {remaining:N0} remain ineligible.";
     }
     private EntityDataPlanViewModel[] BulkTargets()
     {
@@ -279,10 +298,13 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     private void NotifySetup()
     {
         foreach (var property in new[] { nameof(IsSetupReady), nameof(IsOperationalFormEnabled), nameof(CanLoadSetup), nameof(CanCountRows), nameof(CanStart),
-            nameof(SourceCompanies), nameof(TargetCompanies), nameof(SourceListMode), nameof(TargetListMode), nameof(CanUseManualSource),
+            nameof(CanCountSelectedRows), nameof(CanForceEligibility), nameof(SourceCompanies), nameof(TargetCompanies), nameof(SourceListMode), nameof(TargetListMode), nameof(CanUseManualSource),
             nameof(CanUseManualTarget), nameof(SourceCompanyState), nameof(TargetCompanyState), nameof(SetupSummary), nameof(SetupDetails) })
             OnPropertyChanged(property);
             CountRowsCommand.NotifyCanExecuteChanged();
+            CountSelectedRowsCommand.NotifyCanExecuteChanged();
+            ClearRowCountsCommand.NotifyCanExecuteChanged();
+            ForceEligibilityCommand.NotifyCanExecuteChanged();
     }
     private void RequireSetup()
     {
@@ -349,7 +371,12 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     });
 
     [RelayCommand(CanExecute = nameof(CanCountRows))]
-    private Task CountRowsAsync() => RunAsync(async ct =>
+    private Task CountRowsAsync() => CountRowsCoreAsync(false);
+
+    [RelayCommand(CanExecute = nameof(CanCountSelectedRows))]
+    private Task CountSelectedRowsAsync() => CountRowsCoreAsync(true);
+
+    private Task CountRowsCoreAsync(bool selectedOnly) => RunAsync(async ct =>
     {
         RequireSetup();
         var state = _context.State;
@@ -358,13 +385,14 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
         if (_countReader is null) throw new InvalidOperationException("The entity count reader is not registered.");
 
         var generation = _generation;
-        var plans = _plans.Select(viewModel => (ViewModel: viewModel, Plan: viewModel.Build())).ToArray();
+        var plans = _plans.Where(viewModel => !selectedOnly || viewModel.IsSelected)
+            .Select(viewModel => (ViewModel: viewModel, Plan: viewModel.Build())).ToArray();
+        if (plans.Length == 0) throw new InvalidOperationException("Select at least one entity to count.");
         var work = plans.SelectMany(item => new[]
         {
             new CountWork(item.ViewModel.EntitySetName, item.Plan, true),
             new CountWork(item.ViewModel.EntitySetName, item.Plan, false)
         }).ToArray();
-        foreach (var item in plans) item.ViewModel.SetRowsPending();
         var maxConcurrency = _generalParameters?.SavedMaxConcurrentCountRequests ?? GeneralPreferences.DefaultMaxConcurrentCountRequests;
         var results = new ConcurrentDictionary<(string Entity, bool Source), EntityCountReadResult>();
         var completed = 0;
@@ -373,40 +401,38 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
             if (generation == _generation && !ct.IsCancellationRequested)
                 Progress = $"Count rows / {update.Entity} / {update.Side}: {update.Completed} of {update.Total}";
         });
-        try
+        await Parallel.ForEachAsync(work, new ParallelOptions { MaxDegreeOfParallelism = maxConcurrency, CancellationToken = ct }, async (item, token) =>
         {
-            await Parallel.ForEachAsync(work, new ParallelOptions { MaxDegreeOfParallelism = maxConcurrency, CancellationToken = ct }, async (item, token) =>
-            {
-                var environment = item.IsSource ? state.Source : state.Target;
-                var schema = item.IsSource ? state.SourceSchema : state.TargetSchema;
-                var side = item.IsSource ? "Source" : "Target";
-                EntityCountReadResult result;
-                if (!schema.Entities.Any(entity => entity.EntitySetName == item.EntitySetName))
-                    result = new(null, Message: $"{item.EntitySetName} is not available in the {side} schema.");
-                else
-                    result = await _countReader.CountAsync(environment, schema, item.Plan,
-                        item.IsSource ? SourceCompany : TargetCompany, side, token).ConfigureAwait(false);
-                results[(item.EntitySetName, item.IsSource)] = result;
-                var done = Interlocked.Increment(ref completed);
-                progress.Report(new(item.EntitySetName, side, done, work.Length));
-            });
-            ct.ThrowIfCancellationRequested();
-            if (generation != _generation) return;
-            foreach (var item in plans)
-            {
-                item.ViewModel.SetSourceRows(results[(item.ViewModel.EntitySetName, true)]);
-                item.ViewModel.SetTargetRows(results[(item.ViewModel.EntitySetName, false)]);
-            }
-            var successful = results.Values.Count(result => result.Count is not null);
-            Status = $"Count rows completed: {successful:N0} of {work.Length:N0} side/entity requests returned a count.";
-        }
-        catch
+            var environment = item.IsSource ? state.Source : state.Target;
+            var schema = item.IsSource ? state.SourceSchema : state.TargetSchema;
+            var side = item.IsSource ? "Source" : "Target";
+            EntityCountReadResult result;
+            if (!schema.Entities.Any(entity => entity.EntitySetName == item.EntitySetName))
+                result = new(null, Message: $"{item.EntitySetName} is not available in the {side} schema.");
+            else
+                result = await _countReader.CountAsync(environment, schema, item.Plan,
+                    item.IsSource ? SourceCompany : TargetCompany, side, token).ConfigureAwait(false);
+            results[(item.EntitySetName, item.IsSource)] = result;
+            var done = Interlocked.Increment(ref completed);
+            progress.Report(new(item.EntitySetName, side, done, work.Length));
+        });
+        ct.ThrowIfCancellationRequested();
+        if (generation != _generation) return;
+        foreach (var item in plans)
         {
-            if (generation == _generation)
-                foreach (var item in plans) item.ViewModel.ResetRows();
-            throw;
+            item.ViewModel.SetSourceRows(results[(item.ViewModel.EntitySetName, true)]);
+            item.ViewModel.SetTargetRows(results[(item.ViewModel.EntitySetName, false)]);
         }
+        var successful = results.Values.Count(result => result.Count is not null);
+        Status = $"{(selectedOnly ? "Selected " : "")}count rows completed: {successful:N0} of {work.Length:N0} side/entity requests returned a count.";
     });
+
+    [RelayCommand(CanExecute = nameof(IsNotBusy))]
+    private void ClearRowCounts()
+    {
+        ResetRowCounts();
+        Status = "Row counts cleared.";
+    }
 
     [RelayCommand] private Task SaveProfileAsync() => RunAsync(async ct =>
     {
@@ -503,8 +529,8 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     partial void OnTargetSetupChanged(CompanySetupResult? value) => NotifySetup();
     partial void OnSelectedSourceCompanyChanged(LegalEntityOption? value) { if (value is not null) SourceCompany = value.Code; NotifySetup(); }
     partial void OnSelectedTargetCompanyChanged(LegalEntityOption? value) { if (value is not null) TargetCompany = value.Code; NotifySetup(); }
-    partial void OnSourceCompanyChanged(string value) { SelectedSourceCompany = SourceCompanies.SingleOrDefault(company => string.Equals(company.Code, value, StringComparison.OrdinalIgnoreCase)); ResetRowCounts(); NotifySetup(); }
-    partial void OnTargetCompanyChanged(string value) { SelectedTargetCompany = TargetCompanies.SingleOrDefault(company => string.Equals(company.Code, value, StringComparison.OrdinalIgnoreCase)); ResetRowCounts(); NotifySetup(); }
+    partial void OnSourceCompanyChanged(string value) { SelectedSourceCompany = SourceCompanies.SingleOrDefault(company => string.Equals(company.Code, value, StringComparison.OrdinalIgnoreCase)); NotifySetup(); }
+    partial void OnTargetCompanyChanged(string value) { SelectedTargetCompany = TargetCompanies.SingleOrDefault(company => string.Equals(company.Code, value, StringComparison.OrdinalIgnoreCase)); NotifySetup(); }
     partial void OnManualSourceCompanyChanged(bool value) { UpdateSetupStatus(); NotifySetup(); }
     partial void OnManualTargetCompanyChanged(bool value) { UpdateSetupStatus(); NotifySetup(); }
     partial void OnEntitySearchChanged(string value) => OnPropertyChanged(nameof(VisiblePlans));

@@ -12,6 +12,17 @@ public sealed class EntityDataEligibilityService
             or "Edm.DateTimeOffset" or "Edm.TimeOfDay" or "Edm.Duration"
             || schema.Enums.Any(type => type.FullName == property.TypeFullName));
 
+    public static bool HaveMatchingODataKeys(EntitySchema source, EntitySchema target)
+    {
+        var sourceKeys = source.Key.Select(key => key.Name).ToArray();
+        var targetKeys = target.Key.Select(key => key.Name).ToArray();
+        return sourceKeys.Length > 0
+            && sourceKeys.Length == sourceKeys.Distinct(StringComparer.Ordinal).Count()
+            && targetKeys.Length == targetKeys.Distinct(StringComparer.Ordinal).Count()
+            && sourceKeys.Length == targetKeys.Length
+            && sourceKeys.Order(StringComparer.Ordinal).SequenceEqual(targetKeys.Order(StringComparer.Ordinal), StringComparer.Ordinal);
+    }
+
     public PreparedEntityPlan Prepare(SchemaSnapshot source, SchemaSnapshot target, EntityDataPlan plan)
     {
         var problems = new List<string>();
@@ -20,8 +31,8 @@ public sealed class EntityDataEligibilityService
         if (before is null || after is null) return new(plan, [], ["EntitySet is not present in both schemas."]);
         var sourceKey = before.Key.Select(key => key.Name).ToArray();
         var keys = plan.KeyFields.Count == 0 ? sourceKey : plan.KeyFields.ToArray();
-        if (plan.KeyFields.Count == 0 && !sourceKey.SequenceEqual(after.Key.Select(key => key.Name), StringComparer.Ordinal))
-            problems.Add("OData keys differ. Configure an explicit business key.");
+        if (!HaveMatchingODataKeys(before, after))
+            problems.Add("OData key fields must have the same names in Source and Target.");
         if (keys.Length == 0 || keys.Distinct(StringComparer.Ordinal).Count() != keys.Length)
             problems.Add("Configure a nonempty key without duplicate fields.");
         if (plan.Scope == DataScopeKind.NotConfigured) problems.Add("Confirm Company or Shared scope.");

@@ -26,6 +26,27 @@ public sealed class DataComparisonTests
         Assert.False(service.Prepare(SchemaComparisonTests.Snapshot(), SchemaComparisonTests.Snapshot(), Plan with { ExcludedFields = ["Account"] }).IsReady);
     }
     [Fact]
+    public void ODataKeyNamesMustMatchEvenWithBusinessKeyOverrideButOrderDoesNotMatter()
+    {
+        var source = SchemaComparisonTests.Snapshot();
+        var reorderedTarget = source with
+        {
+            Entities = source.Entities.Select(entity => entity.EntitySetName == "Customers"
+                ? entity with { Key = entity.Key.Reverse().ToArray() } : entity).ToArray()
+        };
+        var changedTarget = source with
+        {
+            Entities = source.Entities.Select(entity => entity.EntitySetName == "Customers"
+                ? entity with { Key = [new KeyFieldSchema("Credit", 0)] } : entity).ToArray()
+        };
+        var service = new EntityDataEligibilityService();
+
+        Assert.True(service.Prepare(source, reorderedTarget, Plan).IsReady);
+        var mismatched = service.Prepare(source, changedTarget, Plan with { KeyFields = ["Company", "Account"] });
+        Assert.False(mismatched.IsReady);
+        Assert.Contains(mismatched.Problems, problem => problem.Contains("OData key fields", StringComparison.Ordinal));
+    }
+    [Fact]
     public void CanonicalValuesKeepPrecisionAndDistinguishNullEmptyAndFalse()
     {
         Assert.Equal("9007199254740993", Value("Edm.Int64", "9007199254740993").Canonical);

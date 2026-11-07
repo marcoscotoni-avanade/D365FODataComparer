@@ -21,6 +21,8 @@
         <WrapPanel Grid.Row="1" Margin="0,0,0,8">
             <Button Content="Load setup" Command="{Binding LoadSetupCommand}" IsEnabled="{Binding CanLoadSetup}" Background="{StaticResource AccentBrush}" Foreground="White" />
             <Button Content="Count rows" Command="{Binding CountRowsCommand}" IsEnabled="{Binding CanCountRows}" />
+            <Button Content="Count selected rows" Command="{Binding CountSelectedRowsCommand}" IsEnabled="{Binding CanCountSelectedRows}" />
+            <Button Content="Clear counts" Command="{Binding ClearRowCountsCommand}" IsEnabled="{Binding IsNotBusy}" />
             <Button Content="Validate connections" Command="{Binding ValidateConnectionsCommand}" IsEnabled="{Binding IsNotBusy}" />
             <Button Content="Start data comparison" Command="{Binding StartCommand}" IsEnabled="{Binding CanStart}" Background="{StaticResource AccentBrush}" Foreground="White" />
             <Button Content="Cancel" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
@@ -78,6 +80,8 @@
                                     ToolTip="Apply Company scope to checked entities, or the active row if none are checked. Non-string or missing fields are skipped." />
                                 <Button Content="Set Shared" Command="{Binding ApplySharedScopeCommand}"
                                     ToolTip="Apply Shared scope to checked entities, or the active row if none are checked." />
+                                <Button Content="Force Eligibility" Command="{Binding ForceEligibilityCommand}" IsEnabled="{Binding CanForceEligibility}"
+                                    ToolTip="Exclude fields missing on one side for every ineligible entity with matching OData key fields." />
                             </WrapPanel>
                             <DataGrid Grid.Row="3" Style="{StaticResource DataGridStyle}" MinColumnWidth="48" IsReadOnly="False" ItemsSource="{Binding VisiblePlans}" SelectedItem="{Binding SelectedPlan}">
                                 <DataGrid.Columns>

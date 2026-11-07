@@ -153,8 +153,107 @@ public sealed class DataComparisonWorkspaceTests
             });
             Assert.Contains("completed", workspace.Status, StringComparison.OrdinalIgnoreCase);
             allPlans[0].Scope = DataScopeKind.Shared;
-            Assert.Equal("—", allPlans[0].SourceRows);
-            Assert.Equal("—", allPlans[0].TargetRows);
+            Assert.Equal("4", allPlans[0].SourceRows);
+            Assert.Equal("6", allPlans[0].TargetRows);
+            workspace.ClearRowCountsCommand.Execute(null);
+            Assert.All(allPlans, plan =>
+            {
+                Assert.Equal("—", plan.SourceRows);
+                Assert.Equal("—", plan.TargetRows);
+            });
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
+    public async Task SelectedRowCountOnlyUpdatesSelectedEntities()
+    {
+        var reader = new CountingReader();
+        var workspace = Create(Context(), countReader: reader);
+        try
+        {
+            var plans = workspace.VisiblePlans;
+            await workspace.LoadSetupCommand.ExecuteAsync(null);
+            Assert.False(workspace.CanCountSelectedRows);
+            var selected = plans[0];
+            selected.IsSelected = true;
+            Assert.True(workspace.CanCountSelectedRows);
+
+            await workspace.CountSelectedRowsCommand.ExecuteAsync(null);
+
+            Assert.Equal(2, reader.Calls);
+            Assert.Equal("4", selected.SourceRows);
+            Assert.Equal("6", selected.TargetRows);
+            Assert.All(plans.Skip(1), plan =>
+            {
+                Assert.Equal("—", plan.SourceRows);
+                Assert.Equal("—", plan.TargetRows);
+            });
+
+            selected.Scope = DataScopeKind.Shared;
+            Assert.Equal("4", selected.SourceRows);
+            Assert.Equal("6", selected.TargetRows);
+            reader.Offset = 10;
+            await workspace.CountSelectedRowsCommand.ExecuteAsync(null);
+            Assert.Equal(4, reader.Calls);
+            Assert.Equal("14", selected.SourceRows);
+            Assert.Equal("16", selected.TargetRows);
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
+    public void ForceEligibilityExcludesFieldsUniqueToEitherSchemaAndPreservesExistingExclusions()
+    {
+        var source = SchemaComparisonTests.Snapshot();
+        var target = source with
+        {
+            Entities = source.Entities.Select(entity => entity.EntitySetName == "Customers"
+                ? entity with
+                {
+                    Fields = entity.Fields.Where(field => field.Name != "Credit")
+                        .Append(entity.Fields.Single(field => field.Name == "Credit") with { Name = "TargetOnly" }).ToArray()
+                }
+                : entity).ToArray()
+        };
+        var plan = new EntityDataPlanViewModel("Customers", source, target, new())
+        {
+            Scope = DataScopeKind.Shared,
+            ExcludedFieldsText = "Status"
+        };
+
+        Assert.False(plan.Prepared.IsReady);
+        Assert.True(plan.ForceExcludeSchemaDifferences());
+        Assert.Equal(["Status", "Credit", "TargetOnly"], plan.Build().ExcludedFields);
+        Assert.True(plan.Prepared.IsReady);
+    }
+
+    [Fact]
+    public async Task ForceEligibilityCommandProcessesEveryIneligibleEntityWithMatchingKeys()
+    {
+        var context = Context();
+        var state = context.State;
+        var targetSchema = state.TargetSchema!;
+        var target = targetSchema with
+        {
+            Entities = targetSchema.Entities.Select(entity => entity.EntitySetName == "Customers"
+                ? entity with { Fields = entity.Fields.Where(field => field.Name != "Credit").ToArray() }
+                : entity).ToArray()
+        };
+        context.Update(state with { TargetSchema = target });
+        var workspace = Create(context);
+        try
+        {
+            var customers = workspace.VisiblePlans.Single(plan => plan.EntitySetName == "Customers");
+            customers.Scope = DataScopeKind.Shared;
+            Assert.False(customers.Prepared.IsReady);
+            Assert.True(workspace.CanForceEligibility);
+
+            workspace.ForceEligibilityCommand.Execute(null);
+
+            Assert.True(customers.Prepared.IsReady);
+            Assert.Contains("Credit", customers.Build().ExcludedFields);
+            Assert.Contains("1 entities", workspace.Status);
         }
         finally { await workspace.CloseAsync(); }
     }
@@ -319,6 +418,7 @@ public sealed class DataComparisonWorkspaceTests
         private int _active;
         private int _maximumConcurrency;
         private int _calls;
+        public long Offset { get; set; }
         public int Calls => Volatile.Read(ref _calls);
         public int MaximumConcurrency => Volatile.Read(ref _maximumConcurrency);
 
@@ -333,7 +433,7 @@ public sealed class DataComparisonWorkspaceTests
             try
             {
                 await Task.Delay(20, cancellationToken);
-                return new(side == "Source" ? 4 : 6);
+                return new((side == "Source" ? 4 : 6) + Offset);
             }
             finally { Interlocked.Decrement(ref _active); }
         }
