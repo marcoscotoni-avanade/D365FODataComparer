@@ -63,7 +63,8 @@ public partial class App : System.Windows.Application
 				.ConfigureServices((_, services) =>
 				{
 					services.AddSingleton<IAuthenticationService, MsalAuthenticationService>();
-					services.AddSingleton<IConfigurationRepository, JsonConfigurationRepository>();
+					services.AddSingleton<IConfigurationRepository>(provider => new JsonConfigurationRepository(
+						defaultClientId: provider.GetRequiredService<IConfiguration>()["Authentication:ClientId"]));
 					services.AddSingleton<IGeneralPreferencesRepository, JsonGeneralPreferencesRepository>();
 					services.AddSingleton<GeneralParametersViewModel>();
 					services.AddSingleton<IFinOpsHostPolicy, ApprovedFinOpsHostPolicy>();
@@ -157,4 +158,3 @@ public partial class App : System.Windows.Application
 		base.OnExit(e);
 	}
 }
-

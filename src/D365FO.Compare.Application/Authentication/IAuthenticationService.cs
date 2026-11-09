@@ -4,9 +4,10 @@ namespace D365FO.Compare.Application.Authentication;
 
 public interface IAuthenticationService
 {
-    Task<UserSession> SignInAsync(IntPtr parentWindow, CancellationToken cancellationToken);
-    Task<UserSession> ChangeAccountAsync(IntPtr parentWindow, CancellationToken cancellationToken);
-    Task<string> GetAccessTokenAsync(IReadOnlyCollection<string> scopes, IntPtr parentWindow, CancellationToken cancellationToken);
-    Task SignOutAsync(CancellationToken cancellationToken);
-    Task<UserSession?> GetCurrentSessionAsync(CancellationToken cancellationToken);
+    Task<UserSession> SignInAsync(string tenantId, string clientId, IntPtr parentWindow, CancellationToken cancellationToken, string? preferredHomeAccountId = null);
+    Task<UserSession> ChangeAccountAsync(string tenantId, string clientId, IntPtr parentWindow, CancellationToken cancellationToken);
+    Task<string> GetAccessTokenAsync(string tenantId, IReadOnlyCollection<string> scopes, IntPtr parentWindow, CancellationToken cancellationToken);
+    Task SignOutAsync(string tenantId, string clientId, CancellationToken cancellationToken);
+    Task<UserSession?> GetCurrentSessionAsync(string tenantId, string clientId, CancellationToken cancellationToken, string? preferredHomeAccountId = null);
+    Task<UserSession?> GetCurrentSessionAsync(string tenantId, CancellationToken cancellationToken, string? preferredHomeAccountId = null);
 }

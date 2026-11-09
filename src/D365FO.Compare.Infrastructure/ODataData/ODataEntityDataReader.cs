@@ -93,7 +93,7 @@ public sealed class ODataEntityDataReader : IEntityDataReader
             context.Stage = "Validating session";
             await ValidateIdentityAsync(environment, schema, cancellationToken).ConfigureAwait(false);
             context.Stage = "Acquiring FO token";
-            var token = await _authentication.GetAccessTokenAsync([origin.AbsoluteUri.TrimEnd('/').ToLowerInvariant() + "/.default"],
+            var token = await _authentication.GetAccessTokenAsync(environment.TenantId, [origin.AbsoluteUri.TrimEnd('/').ToLowerInvariant() + "/.default"],
                 _window.ParentWindowProvider(), cancellationToken).ConfigureAwait(false);
             context.Stage = "Validating session after token";
             await ValidateIdentityAsync(environment, schema, cancellationToken).ConfigureAwait(false);
@@ -131,7 +131,7 @@ public sealed class ODataEntityDataReader : IEntityDataReader
     private async Task ValidateIdentityAsync(EnvironmentConnection environment, SchemaSnapshot schema, CancellationToken cancellationToken)
     {
         if (!_hosts.IsAllowed(environment.FinOpsUrl)) throw new DataAuthorizationException("The data environment is not approved by the host policy.");
-        var session = await _authentication.GetCurrentSessionAsync(cancellationToken).ConfigureAwait(false);
+        var session = await _authentication.GetCurrentSessionAsync(environment.TenantId, cancellationToken).ConfigureAwait(false);
         if (session is null || session.HomeAccountId != schema.AccountId
             || !string.Equals(session.TenantId, environment.TenantId, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(session.TenantId, schema.TenantId, StringComparison.OrdinalIgnoreCase))

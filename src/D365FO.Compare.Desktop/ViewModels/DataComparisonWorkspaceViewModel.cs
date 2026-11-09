@@ -31,6 +31,7 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     private CancellationTokenSource? _operation;
     private TaskCompletionSource _idle = CompletedSignal();
     private int _generation;
+    private CountStatusFilter? _countStatusFilter;
     private bool _batchVisiblePlansRefresh;
     private bool _visiblePlansRefreshPending;
     private bool _closed;
@@ -47,7 +48,6 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     [ObservableProperty] private bool manualSourceCompany;
     [ObservableProperty] private bool manualTargetCompany;
     [ObservableProperty] private bool showSelectedOnly;
-    [ObservableProperty] private bool showNonzeroCountsOnly;
     [ObservableProperty] private string entitySearch = "";
     [ObservableProperty] private string bulkCompanyField = "dataAreaId";
     [ObservableProperty] private long maxRows = 100000;
@@ -67,6 +67,26 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     [ObservableProperty] private bool includeEqualInExport;
     public event EventHandler? ConnectionValidationRequested;
     public bool IsNotBusy => !IsBusy;
+    public bool ShowNonzeroCountsOnly
+    {
+        get => _countStatusFilter == CountStatusFilter.NonzeroOrUnknown;
+        set => SetCountStatusFilter(CountStatusFilter.NonzeroOrUnknown, value);
+    }
+    public bool ShowZeroCountsOnly
+    {
+        get => _countStatusFilter == CountStatusFilter.ZeroOnBothSides;
+        set => SetCountStatusFilter(CountStatusFilter.ZeroOnBothSides, value);
+    }
+    public bool ShowNotAvailableCountsOnly
+    {
+        get => _countStatusFilter == CountStatusFilter.NotAvailable;
+        set => SetCountStatusFilter(CountStatusFilter.NotAvailable, value);
+    }
+    public bool ShowCountErrorsOnly
+    {
+        get => _countStatusFilter == CountStatusFilter.Error;
+        set => SetCountStatusFilter(CountStatusFilter.Error, value);
+    }
     public bool SelectedMode { get => !AllEligible; set { if (value) AllEligible = false; } }
     public bool IsSetupReady => SetupStatus is DataSetupStatus.Ready or DataSetupStatus.ReadyWithWarnings;
     public bool IsOperationalFormEnabled => IsSetupReady && !IsBusy;
@@ -100,7 +120,7 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     public IReadOnlyList<EntityDataPlanViewModel> VisiblePlans => ActivePlans
         .Where(plan => plan.EntitySetName.Contains(EntitySearch, StringComparison.OrdinalIgnoreCase))
         .Where(plan => !ShowSelectedOnly || plan.IsSelected)
-        .Where(plan => !ShowNonzeroCountsOnly || plan.HasRowsOrUnknown)
+        .Where(HasMatchingCountStatus)
         .ToArray();
     public string SelectionSummary => $"{ActivePlans.Count(plan => plan.IsSelected):N0} selected / {ActivePlans.Count:N0} entities";
     public IReadOnlyList<string> RecordFilters { get; } = ["All statuses", .. Enum.GetNames<DataRecordStatus>()];
@@ -210,7 +230,15 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
             OnPropertyChanged(nameof(CanImportExcludedEntities));
             ImportExcludedEntitiesCommand.NotifyCanExecuteChanged();
         }
-        if (args.PropertyName == nameof(EntityDataPlanViewModel.HasRowsOrUnknown) && ShowNonzeroCountsOnly)
+        var countFilterChanged = (_countStatusFilter, args.PropertyName) switch
+        {
+            (CountStatusFilter.NonzeroOrUnknown, nameof(EntityDataPlanViewModel.HasRowsOrUnknown)) => true,
+            (CountStatusFilter.ZeroOnBothSides, nameof(EntityDataPlanViewModel.HasZeroCounts)) => true,
+            (CountStatusFilter.NotAvailable, nameof(EntityDataPlanViewModel.HasNotAvailableCount)) => true,
+            (CountStatusFilter.Error, nameof(EntityDataPlanViewModel.HasCountError)) => true,
+            _ => false
+        };
+        if (countFilterChanged)
         {
             if (_batchVisiblePlansRefresh) _visiblePlansRefreshPending = true;
             else OnPropertyChanged(nameof(VisiblePlans));
@@ -229,6 +257,7 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     [RelayCommand] private void ClearSelection() { foreach (var plan in ActivePlans) plan.IsSelected = false; }
     [RelayCommand] private void SelectVisible() { foreach (var plan in VisiblePlans) plan.IsSelected = true; }
     [RelayCommand] private void ExcludeVisible() { foreach (var plan in VisiblePlans) plan.IsExcluded = true; }
+    [RelayCommand] private void ShowAllCountStatuses() => SetCountStatusFilter(null);
     [RelayCommand] private void ApplyCompanyScope()
     {
         var targets = BulkTargets();
@@ -628,15 +657,35 @@ public partial class DataComparisonWorkspaceViewModel : ObservableObject
     partial void OnManualTargetCompanyChanged(bool value) { UpdateSetupStatus(); NotifySetup(); }
     partial void OnEntitySearchChanged(string value) => OnPropertyChanged(nameof(VisiblePlans));
     partial void OnShowSelectedOnlyChanged(bool value) => OnPropertyChanged(nameof(VisiblePlans));
-    partial void OnShowNonzeroCountsOnlyChanged(bool value) => OnPropertyChanged(nameof(VisiblePlans));
     partial void OnManifestChanged(DataRunManifest? value) => OnPropertyChanged(nameof(RunSummary));
     partial void OnSelectedRecordChanged(DataRecordResult? value) => OnPropertyChanged(nameof(SelectedFields));
     partial void OnRecordsChanged(IReadOnlyList<DataRecordResult> value) => OnPropertyChanged(nameof(PageSummary));
     partial void OnOffsetChanged(long value) => OnPropertyChanged(nameof(PageSummary));
     partial void OnTotalRecordsChanged(long value) => OnPropertyChanged(nameof(PageSummary));
     private void ResetRowCounts() { foreach (var plan in _plans) plan.ResetRows(); }
+    private bool HasMatchingCountStatus(EntityDataPlanViewModel plan) => _countStatusFilter switch
+    {
+        CountStatusFilter.NonzeroOrUnknown => plan.HasRowsOrUnknown,
+        CountStatusFilter.ZeroOnBothSides => plan.HasZeroCounts,
+        CountStatusFilter.NotAvailable => plan.HasNotAvailableCount,
+        CountStatusFilter.Error => plan.HasCountError,
+        _ => true
+    };
+    private void SetCountStatusFilter(CountStatusFilter filter, bool enabled) =>
+        SetCountStatusFilter(enabled ? filter : _countStatusFilter == filter ? null : _countStatusFilter);
+    private void SetCountStatusFilter(CountStatusFilter? filter)
+    {
+        if (_countStatusFilter == filter) return;
+        _countStatusFilter = filter;
+        OnPropertyChanged(nameof(ShowNonzeroCountsOnly));
+        OnPropertyChanged(nameof(ShowZeroCountsOnly));
+        OnPropertyChanged(nameof(ShowNotAvailableCountsOnly));
+        OnPropertyChanged(nameof(ShowCountErrorsOnly));
+        OnPropertyChanged(nameof(VisiblePlans));
+    }
     partial void OnSelectedEntityResultChanged(DataEntityRunResult? value) { Offset = 0; if (!IsBusy) LoadPageCommand.Execute(null); }
     partial void OnRecordFilterChanged(string value) { Offset = 0; if (!IsBusy) LoadPageCommand.Execute(null); }
     private static TaskCompletionSource CompletedSignal() { var source = new TaskCompletionSource(); source.SetResult(); return source; }
+    private enum CountStatusFilter { NonzeroOrUnknown, ZeroOnBothSides, NotAvailable, Error }
     private sealed record CountWork(string EntitySetName, EntityDataPlan Plan, bool IsSource);
 }

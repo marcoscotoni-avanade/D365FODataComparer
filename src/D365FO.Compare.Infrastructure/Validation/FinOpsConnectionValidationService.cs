@@ -60,7 +60,7 @@ public sealed class FinOpsConnectionValidationService : IConnectionValidationSer
                 validatedUtc);
         }
 
-        var session = await _authenticationService.GetCurrentSessionAsync(cancellationToken).ConfigureAwait(false);
+        var session = await _authenticationService.GetCurrentSessionAsync(environment.TenantId, cancellationToken).ConfigureAwait(false);
         if (session is null || !string.Equals(session.TenantId, environment.TenantId, StringComparison.OrdinalIgnoreCase))
         {
             return new ConnectionValidationResult(
@@ -74,7 +74,7 @@ public sealed class FinOpsConnectionValidationService : IConnectionValidationSer
             var finOpsResource = finOpsUrl.GetLeftPart(UriPartial.Authority).TrimEnd('/').ToLowerInvariant();
             var scope = $"{finOpsResource}/.default";
             var accessToken = await _authenticationService
-                .GetAccessTokenAsync([scope], parentWindow, cancellationToken)
+                .GetAccessTokenAsync(environment.TenantId, [scope], parentWindow, cancellationToken)
                 .ConfigureAwait(false);
 
             using var response = await SendWithRetryAsync(finOpsUrl, accessToken, cancellationToken)

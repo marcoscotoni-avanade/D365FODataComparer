@@ -52,7 +52,7 @@ public sealed class PowerPlatformEnvironmentDiscoveryProvider : IEnvironmentDisc
     {
         var stopwatch = Stopwatch.StartNew();
         var accessToken = await _authenticationService
-            .GetAccessTokenAsync([_scope], parentWindow, cancellationToken)
+            .GetAccessTokenAsync(session.TenantId, [_scope], parentWindow, cancellationToken)
             .ConfigureAwait(false);
 
         var nextPage = new Uri(

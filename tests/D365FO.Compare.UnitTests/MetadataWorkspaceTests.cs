@@ -20,8 +20,9 @@ namespace D365FO.Compare.UnitTests;
 public sealed class MetadataWorkspaceTests
 {
     internal static readonly UserSession Session = new("tenant", "user@example.com", "account");
-    internal static AppConfiguration Configuration => new()
+    internal static ConnectionProfile Configuration => new()
     {
+        Id = "profile", Name = "Test", TenantId = "tenant",
         AuthenticationContext = new AuthenticationContext("tenant", "user@example.com", "account"),
         SourceEnvironment = Environment("source"),
         TargetEnvironment = Environment("target")

@@ -293,6 +293,50 @@ public sealed class DataComparisonWorkspaceTests
     }
 
     [Fact]
+    public async Task CountStatusFiltersMatchBothSidesAndAreMutuallyExclusive()
+    {
+        var workspace = Create(Context());
+        try
+        {
+            var plans = workspace.VisiblePlans;
+            var zero = plans[0];
+            workspace.ShowZeroCountsOnly = true;
+            Assert.Empty(workspace.VisiblePlans);
+            zero.SetSourceRows(new(0));
+            Assert.Empty(workspace.VisiblePlans);
+            zero.SetTargetRows(new(0));
+            Assert.Same(zero, Assert.Single(workspace.VisiblePlans));
+
+            var notAvailable = plans[1];
+            workspace.ShowNotAvailableCountsOnly = true;
+            Assert.Empty(workspace.VisiblePlans);
+            notAvailable.SetSourceRows(new(null));
+            notAvailable.SetTargetRows(new(0));
+            Assert.Same(notAvailable, Assert.Single(workspace.VisiblePlans));
+
+            var error = notAvailable;
+            workspace.ShowCountErrorsOnly = true;
+            Assert.Empty(workspace.VisiblePlans);
+            error.SetSourceRows(new(0));
+            error.SetTargetRows(new(null, new("Target", "Count rows", null, "IOException", "Count failed.")));
+            Assert.Same(error, Assert.Single(workspace.VisiblePlans));
+            Assert.False(workspace.ShowZeroCountsOnly);
+
+            Assert.False(workspace.ShowNotAvailableCountsOnly);
+
+            workspace.ShowNonzeroCountsOnly = true;
+            Assert.False(workspace.ShowCountErrorsOnly);
+            Assert.Contains(notAvailable, workspace.VisiblePlans);
+            Assert.Contains(error, workspace.VisiblePlans);
+            Assert.DoesNotContain(zero, workspace.VisiblePlans);
+
+            workspace.ShowNonzeroCountsOnly = false;
+            Assert.Equal(plans.Count, workspace.VisiblePlans.Count);
+        }
+        finally { await workspace.CloseAsync(); }
+    }
+
+    [Fact]
     public async Task ClearRowCountsRefreshesFilteredEntityListOnlyOnce()
     {
         var workspace = Create(Context());

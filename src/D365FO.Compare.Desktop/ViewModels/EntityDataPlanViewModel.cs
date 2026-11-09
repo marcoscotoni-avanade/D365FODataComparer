@@ -88,6 +88,9 @@ public partial class EntityDataPlanViewModel : ObservableObject
     public PreparedEntityPlan Prepared => _eligibility.Prepare(_source, _target, Build());
     public string Eligibility => Prepared.IsReady ? "Ready" : string.Join(" ", Prepared.Problems);
     public bool HasRowsOrUnknown => SourceHasRowsOrUnknown || TargetHasRowsOrUnknown;
+    public bool HasZeroCounts => _sourceCountResult?.Count == 0 && _targetCountResult?.Count == 0;
+    public bool HasNotAvailableCount => IsNotAvailable(_sourceCountResult) || IsNotAvailable(_targetCountResult);
+    public bool HasCountError => _sourceCountResult?.Diagnostic is not null || _targetCountResult?.Diagnostic is not null;
 
     public EntityDataPlanViewModel(string name, SchemaSnapshot source, SchemaSnapshot target, EntityDataEligibilityService eligibility)
     {
@@ -142,6 +145,7 @@ public partial class EntityDataPlanViewModel : ObservableObject
         SourceHasRowsOrUnknown = TargetHasRowsOrUnknown = true;
         _sourceCountResult = _targetCountResult = null;
         _rowCountsCapturedAtUtc = null;
+        NotifyCountStatusChanged();
     }
     private void SetRows(EntityCountReadResult result, bool source, DateTimeOffset? capturedAtUtc, bool profileSnapshot)
     {
@@ -165,6 +169,14 @@ public partial class EntityDataPlanViewModel : ObservableObject
             TargetRowsDetails = details;
             TargetHasRowsOrUnknown = hasRowsOrUnknown;
         }
+        NotifyCountStatusChanged();
+    }
+    private static bool IsNotAvailable(EntityCountReadResult? result) => result is not null && result.Count is null && result.Diagnostic is null;
+    private void NotifyCountStatusChanged()
+    {
+        OnPropertyChanged(nameof(HasZeroCounts));
+        OnPropertyChanged(nameof(HasNotAvailableCount));
+        OnPropertyChanged(nameof(HasCountError));
     }
     partial void OnSourceHasRowsOrUnknownChanged(bool value) => OnPropertyChanged(nameof(HasRowsOrUnknown));
     partial void OnTargetHasRowsOrUnknownChanged(bool value) => OnPropertyChanged(nameof(HasRowsOrUnknown));

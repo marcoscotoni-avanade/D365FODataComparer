@@ -341,17 +341,19 @@ public sealed class MetadataTests
       {
         public int TokenCalls { get; private set; }
         public bool SwitchAccountOnToken { get; init; }
-        public Task<UserSession?> GetCurrentSessionAsync(CancellationToken cancellationToken) => Task.FromResult<UserSession?>(
+        public Task<UserSession?> GetCurrentSessionAsync(string tenantId, string clientId, CancellationToken cancellationToken, string? preferredHomeAccountId = null) => Task.FromResult<UserSession?>(
           new("tenant", "user@example.com", SwitchAccountOnToken && TokenCalls > 0 ? "another-account" : "account"));
-        public Task<string> GetAccessTokenAsync(IReadOnlyCollection<string> scopes, IntPtr parentWindow, CancellationToken cancellationToken)
+        public Task<UserSession?> GetCurrentSessionAsync(string tenantId, CancellationToken cancellationToken, string? preferredHomeAccountId = null) =>
+          Task.FromResult<UserSession?>(new("tenant", "user@example.com", SwitchAccountOnToken && TokenCalls > 0 ? "another-account" : "account"));
+        public Task<string> GetAccessTokenAsync(string tenantId, IReadOnlyCollection<string> scopes, IntPtr parentWindow, CancellationToken cancellationToken)
         {
           TokenCalls++;
           Assert.Equal("https://source.example/.default", Assert.Single(scopes));
           return Task.FromResult("fake");
         }
-        public Task<UserSession> SignInAsync(IntPtr parentWindow, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<UserSession> ChangeAccountAsync(IntPtr parentWindow, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task SignOutAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<UserSession> SignInAsync(string tenantId, string clientId, IntPtr parentWindow, CancellationToken cancellationToken, string? preferredHomeAccountId = null) => throw new NotSupportedException();
+        public Task<UserSession> ChangeAccountAsync(string tenantId, string clientId, IntPtr parentWindow, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task SignOutAsync(string tenantId, string clientId, CancellationToken cancellationToken) => throw new NotSupportedException();
       }
 
       private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler

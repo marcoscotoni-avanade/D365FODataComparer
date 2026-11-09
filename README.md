@@ -17,11 +17,11 @@ After saving validated connections and loading complete schemas for both environ
 
 Use **Count rows** to request Source and Target counts for every entity in the loaded schema union, regardless of search text or entity checkboxes. **Count selected rows** counts only checked entities; it is disabled when none are selected. Counts use each entity's current Company/Shared scope and typed filters; **Not configured** leaves the endpoint's default company behavior unchanged. Both commands use OData `$count=true&$top=0` to request the count annotation with an empty value array, without downloading records or altering comparison results. A selected-only recount updates only those entities; counts remain visible when configuration or unrelated actions change until **Clear counts** is pressed or a later count replaces them. Failed or unavailable counts remain distinct from zero. Configure count-only HTTP concurrency in **General parameters**: default 2, valid range 1–8, saved per user and applied to the next count operation. Live F&O behavior with the entity-specific filters still requires confirmation against the target environments; if the zero-row query is unsupported or returns records, the row shows a diagnostic rather than silently falling back to record downloads.
 
-Toggle **Nonzero rows / errors / unknown** to filter Data Scope to entities with rows on either side, count errors, or counts not yet computed; only entities successfully counted as zero on both sides are hidden. The filter combines with search and **Selected only**. **Select visible** and **Exclude visible** set their respective independent flags only on rows currently shown by all Data Scope filters.
+Use **Entity actions / filters** in Data Scope to access selection, scope, eligibility, exclusion, and count-filter commands without crowding the grid toolbar. **Selected only** and search remain directly available. Count filters are mutually exclusive and combine with search, global exclusions, and **Selected only**: **Nonzero rows / errors / unknown** shows rows on either side, count errors, or counts not yet computed; **Zero on both sides** requires successful zero counts on both Source and Target; **N/A on either side** matches a completed count with no numeric value or diagnostic on either side; **Error on either side** matches a count diagnostic from either environment. **All count statuses** clears the count filter. **Select visible** and **Exclude visible** set their respective independent flags only on rows currently shown by all active filters.
 
-Use the **Exclude** checkbox independently from **Select**, then press **Add Exclude-flagged to global list** to immediately save all flagged EntitySet names in **General parameters**. Names are de-duplicated without case sensitivity and successfully imported flags are cleared. Global exclusions are hidden from Data Scope and omitted from row counts and comparisons. Edit the one-name-per-line global list in **General parameters** and save changes there.
+Use the **Exclude** checkbox independently from **Select**, then choose **Add Exclude-flagged to global list** from the Data Scope menu to immediately save all flagged EntitySet names in **General parameters**. Names are de-duplicated without case sensitivity and successfully imported flags are cleared. Global exclusions are hidden from Data Scope and omitted from row counts and comparisons. Edit the one-name-per-line global list in **General parameters** and save changes there.
 
-The bulk **Force Eligibility** action adds fields missing from either side to **Excluded fields** for every currently non-eligible entity whose Source and Target OData keys have the same field names (key order may differ). Existing exclusions are retained. The action does not override different/missing keys, which are a hard prerequisite for comparison, or other remaining incompatibilities; review each entity's Eligibility after applying it.
+The bulk **Force Eligibility** action in the Data Scope menu adds fields missing from either side to **Excluded fields** for every currently non-eligible entity whose Source and Target OData keys have the same field names (key order may differ). Existing exclusions are retained. The action does not override different/missing keys, which are a hard prerequisite for comparison, or other remaining incompatibilities; review each entity's Eligibility after applying it.
 
 ### Setup and company selection
 
@@ -107,9 +107,11 @@ Before relying on the REST catalog contract, authorize a read-only metadata POC 
 
 - Windows 10 or later.
 - .NET 10 SDK.
-- A single-tenant Microsoft Entra app registration configured as a desktop/public-client application.
+- A Microsoft Entra app registration configured as a desktop/public-client application and enabled for the tenants used by the profiles (single- or multi-tenant as required by the organization's consent policy).
 - Delegated Power Platform API permission `EnvironmentManagement.Environments.Read` with consent granted as required by the tenant.
 - A Finance and Operations user account provisioned and authorized in both environments.
+
+In the **Account** tab, add one connection profile per tenant using its Entra tenant ID and Application (Client) ID, then activate it and sign in. The profile keeps its own app registration, account identity and Source/Target pair. Activating a profile clears the previous environment selection and requires the connections to be tested again; comparisons across tenants are intentionally not allowed.
 
 For Windows Account Manager (WAM), register the broker redirect URI `ms-appx-web://Microsoft.AAD.BrokerPlugin/{client-id}` for the app. WAM must be parented to the desktop window; the application does this for interactive sign-in.
 
@@ -119,15 +121,14 @@ The app reuses the signed-in MSAL account and first tries to acquire an FO-audie
 
 ## Local configuration
 
-Create `src/D365FO.Compare.Desktop/appsettings.local.json` for local settings. It is git-ignored and overrides `appsettings.json`. Set the Entra `Authentication:ClientId` and `Authentication:TenantId`. The app registration identifiers are not credentials; the public client uses no client secret. Keep access tokens, refresh tokens, passwords, and secrets out of all configuration and logs.
+Create `src/D365FO.Compare.Desktop/appsettings.local.json` for local settings. It is git-ignored and overrides `appsettings.json`. `Authentication:ClientId` is the default prefilled for new profiles and used to migrate existing configurations; set or change the Application (Client) ID independently on each profile when tenants use different app registrations. Profiles, account identities and Source/Target environments are stored locally in the versioned configuration file. A profile switch requires sign-in and fresh connection tests. The protected MSAL token cache is isolated per tenant and Client ID. The app registration identifier is not a credential; the public client uses no client secret. Keep access tokens, refresh tokens, passwords, and secrets out of all configuration and logs.
 
 For example, the local file shape is:
 
 ```json
 {
 	"Authentication": {
-		"ClientId": "<entra-client-id>",
-		"TenantId": "<entra-tenant-id>"
+		"ClientId": "<entra-client-id>"
 	},
 	"Environment": {
 		"RequestTimeoutSeconds": 30
@@ -143,6 +144,8 @@ For example, the local file shape is:
 	}
 }
 ```
+
+Existing single-tenant configuration files are migrated automatically to one profile the first time they are loaded. The profiles are local to the Windows user and are not synchronized between computers. Source and Target must remain in the active profile's tenant and account; cross-tenant comparisons are not supported.
 
 The host policy is populated at runtime from FinOps URLs returned by authenticated discovery or explicitly added in the tool; no host list belongs in appsettings. Only HTTPS base URLs are approved; non-default ports, paths, query strings, and user info are rejected. Keep sanitized diagnostics disabled except during an approved POC. When enabled, logs contain only operation, status, page/attempt counts and elapsed/retry timings. They never contain a token, URL, environment name/ID, or response payload.
 

@@ -342,13 +342,14 @@ public sealed class EnvironmentIntegrationTests
     {
         public IReadOnlyCollection<string> LastRequestedScopes { get; private set; } = [];
 
-        public Task<UserSession> SignInAsync(IntPtr parentWindow, CancellationToken cancellationToken) =>
+        public Task<UserSession> SignInAsync(string tenantId, string clientId, IntPtr parentWindow, CancellationToken cancellationToken, string? preferredHomeAccountId = null) =>
             Task.FromResult(session ?? throw new InvalidOperationException("No test session configured."));
 
-        public Task<UserSession> ChangeAccountAsync(IntPtr parentWindow, CancellationToken cancellationToken) =>
-            SignInAsync(parentWindow, cancellationToken);
+        public Task<UserSession> ChangeAccountAsync(string tenantId, string clientId, IntPtr parentWindow, CancellationToken cancellationToken) =>
+            SignInAsync(tenantId, clientId, parentWindow, cancellationToken);
 
         public Task<string> GetAccessTokenAsync(
+            string tenantId,
             IReadOnlyCollection<string> scopes,
             IntPtr parentWindow,
             CancellationToken cancellationToken)
@@ -357,9 +358,11 @@ public sealed class EnvironmentIntegrationTests
             return Task.FromResult("test-access-token");
         }
 
-        public Task SignOutAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task SignOutAsync(string tenantId, string clientId, CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task<UserSession?> GetCurrentSessionAsync(CancellationToken cancellationToken) => Task.FromResult(session);
+        public Task<UserSession?> GetCurrentSessionAsync(string tenantId, string clientId, CancellationToken cancellationToken, string? preferredHomeAccountId = null) => Task.FromResult(session);
+
+        public Task<UserSession?> GetCurrentSessionAsync(string tenantId, CancellationToken cancellationToken, string? preferredHomeAccountId = null) => Task.FromResult(session);
     }
 
     private sealed class QueueHttpMessageHandler : HttpMessageHandler

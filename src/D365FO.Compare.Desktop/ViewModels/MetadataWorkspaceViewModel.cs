@@ -122,7 +122,7 @@ public partial class MetadataWorkspaceViewModel(
         $"{Result.Entities.Count(entity => entity.Kind == EntityChangeKind.Removed)} removed | {Result.Entities.Count(entity => entity.Kind == EntityChangeKind.Changed)} changed | " +
         $"{Result.Entities.Count(entity => !entity.IsComplete)} incomplete | Equivalent: {Result.AreEquivalent}";
 
-    public async Task ConfigureAsync(AppConfiguration configuration, UserSession session, bool canRefresh, CancellationToken cancellationToken)
+    public async Task ConfigureAsync(ConnectionProfile configuration, UserSession session, bool canRefresh, CancellationToken cancellationToken)
     {
         Reset();
         if (configuration.AuthenticationContext?.HomeAccountId != session.HomeAccountId

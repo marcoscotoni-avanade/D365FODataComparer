@@ -60,7 +60,7 @@ public sealed class ODataEntityCountReader : IEntityCountReader
             string token;
             try
             {
-                token = await _authentication.GetAccessTokenAsync([origin.AbsoluteUri.TrimEnd('/').ToLowerInvariant() + "/.default"],
+                token = await _authentication.GetAccessTokenAsync(environment.TenantId, [origin.AbsoluteUri.TrimEnd('/').ToLowerInvariant() + "/.default"],
                     _window.ParentWindowProvider(), cancellationToken).ConfigureAwait(false);
             }
             finally { _tokenGate.Release(); }
@@ -139,7 +139,7 @@ public sealed class ODataEntityCountReader : IEntityCountReader
     private async Task ValidateIdentityAsync(EnvironmentConnection environment, SchemaSnapshot schema, CancellationToken cancellationToken)
     {
         if (!_hosts.IsAllowed(environment.FinOpsUrl)) throw new DataAuthorizationException("The data environment is not approved by the host policy.");
-        var session = await _authentication.GetCurrentSessionAsync(cancellationToken).ConfigureAwait(false);
+        var session = await _authentication.GetCurrentSessionAsync(environment.TenantId, cancellationToken).ConfigureAwait(false);
         if (session is null || session.HomeAccountId != schema.AccountId
             || !string.Equals(session.TenantId, environment.TenantId, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(session.TenantId, schema.TenantId, StringComparison.OrdinalIgnoreCase))

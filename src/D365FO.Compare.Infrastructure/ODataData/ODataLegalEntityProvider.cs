@@ -54,7 +54,7 @@ public sealed class ODataLegalEntityProvider
             cancellationToken.ThrowIfCancellationRequested();
             if (visited.Count >= 100 || !visited.Add(next.AbsoluteUri)) throw new DataLimitException("LegalEntities paging exceeded its limit or contains a loop.");
             await ValidateAsync(environment, schema, cancellationToken).ConfigureAwait(false);
-            var token = await _authentication.GetAccessTokenAsync([origin.AbsoluteUri.TrimEnd('/').ToLowerInvariant() + "/.default"],
+            var token = await _authentication.GetAccessTokenAsync(environment.TenantId, [origin.AbsoluteUri.TrimEnd('/').ToLowerInvariant() + "/.default"],
                 _window.ParentWindowProvider(), cancellationToken).ConfigureAwait(false);
             await ValidateAsync(environment, schema, cancellationToken).ConfigureAwait(false);
             progress?.Report(new("LegalEntities", side, "Loading setup companies", totalRows, visited.Count));
@@ -94,7 +94,7 @@ public sealed class ODataLegalEntityProvider
         if (!_hosts.IsAllowed(environment.FinOpsUrl) || schema.EnvironmentId != environment.ProviderEnvironmentId
             || !string.Equals(schema.EnvironmentOrigin, environment.FinOpsUrl.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase))
             throw new DataAuthorizationException("Setup environment identity or host is not approved.");
-        var session = await _authentication.GetCurrentSessionAsync(cancellationToken).ConfigureAwait(false);
+        var session = await _authentication.GetCurrentSessionAsync(environment.TenantId, cancellationToken).ConfigureAwait(false);
         if (session is null || session.HomeAccountId != schema.AccountId
             || !string.Equals(session.TenantId, environment.TenantId, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(session.TenantId, schema.TenantId, StringComparison.OrdinalIgnoreCase))
